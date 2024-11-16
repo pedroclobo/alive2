@@ -310,8 +310,9 @@ public:
 
 class ConversionOp final : public Instr {
 public:
-  enum Op { SExt, ZExt, Trunc, BitCast, Ptr2Int, Int2Ptr };
-  enum Flags { None = 0, NNEG = 1 << 0, NSW = 1 << 1, NUW = 1 << 2 };
+  enum Op { SExt, ZExt, Trunc, BitCast, ByteCast, Ptr2Int, Int2Ptr };
+  enum Flags { None = 0, NNEG = 1 << 0, NSW = 1 << 1, NUW = 1 << 2,
+               EXACT = 1 << 3 };
 
 private:
   Value *val;

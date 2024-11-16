@@ -140,6 +140,10 @@ expr Type::enforceIntOrPtrType() const {
   return enforceIntType() || enforcePtrType();
 }
 
+expr Type::enforceIntOrFloatOrPtrType() const {
+  return enforceIntType() || enforcePtrType() || enforceFloatType();
+}
+
 expr Type::enforcePtrType() const {
   return false;
 }
@@ -206,7 +210,7 @@ expr Type::enforceByteOrVectorType(unsigned bits) const {
 
 expr Type::enforceIntOrFloatOrPtrOrVectorType() const {
   return enforceScalarOrVectorType(
-    [&](auto &ty) { return ty.enforceIntOrPtrType() || ty.enforceFloatType();});
+    [&](auto &ty) { return ty.enforceIntOrFloatOrPtrType(); });
 }
 
 expr Type::enforceIntOrByteOrFloatOrPtrOrVectorType() const {
