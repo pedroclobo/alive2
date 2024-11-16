@@ -281,6 +281,7 @@ public:
       case llvm::Instruction::ZExt:     op = ConversionOp::ZExt; break;
       case llvm::Instruction::Trunc:    op = ConversionOp::Trunc; break;
       case llvm::Instruction::BitCast:  op = ConversionOp::BitCast; break;
+      case llvm::Instruction::ByteCast: op = ConversionOp::ByteCast; break;
       case llvm::Instruction::PtrToInt: op = ConversionOp::Ptr2Int; break;
       case llvm::Instruction::IntToPtr: op = ConversionOp::Int2Ptr; break;
       default: has_non_fp = false; break;

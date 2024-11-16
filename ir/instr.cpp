@@ -1603,6 +1603,7 @@ void ConversionOp::print(ostream &os) const {
   case ZExt:     str = "zext "; break;
   case Trunc:    str = "trunc "; break;
   case BitCast:  str = "bitcast "; break;
+  case ByteCast: str = "bytecast "; break;
   case Ptr2Int:  str = "ptrtoint "; break;
   case Int2Ptr:  str = "int2ptr "; break;
   }
@@ -1652,7 +1653,15 @@ StateValue ConversionOp::toSMT(State &s) const {
         getType().getAsAggregateType()->getChild(0).isPtrType())
       return v;
 
+    if (getType().isByteType())
+      return s.getMemory().bytesToValue(
+               s.getMemory().valueToBytes(v, val->getType(), s), getType());
+
     return getType().fromInt(val->getType().toInt(s, std::move(v)));
+
+  case ByteCast:
+    return s.getMemory().bytesToValue(
+             s.getMemory().valueToBytes(v, val->getType(), s), getType());
 
   case Ptr2Int:
     fn = [&](auto &&val, auto &to_type) -> StateValue {
@@ -1701,11 +1710,18 @@ expr ConversionOp::getTypeConstraints(const Function &f) const {
         getType().scalarSize().ult(val->getType().scalarSize());
     break;
   case BitCast:
-    c = getType().enforceIntOrFloatOrPtrOrVectorType() &&
+    c = getType().enforceIntOrByteOrFloatOrPtrOrVectorType() &&
         val->getType().enforceIntOrFloatOrPtrOrVectorType() &&
         getType().enforcePtrOrVectorType() ==
           val->getType().enforcePtrOrVectorType() &&
         getType().sizeVar() == val->getType().sizeVar();
+    break;
+  case ByteCast:
+    c = getType().enforceIntOrPtrOrVectorType() &&
+        val->getType().enforceByteOrVectorType() &&
+        expr::mkIf(getType().enforcePtrOrVectorType(),
+                   val->getType().scalarSize() == bits_program_pointer,
+                   val->getType().scalarSize() == getType().scalarSize());
     break;
   case Ptr2Int:
     c = getType().enforceIntOrVectorType() &&
