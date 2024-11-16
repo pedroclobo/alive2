@@ -566,7 +566,7 @@ check_refinement(Errors &errs, const Transform &t, State &src_state,
       errs.add("Precondition is always false", false);
       return;
     }
-  
+
     vector<pair<expr, expr>> repls;
     auto vars_pre = pre_src.vars();
     for (auto &v : qvars) {
@@ -1053,6 +1053,7 @@ static void calculateAndInitConstants(Transform &t) {
         continue;
 
       has_ptr_arg |= hasPtr(i->getType());
+      does_int_mem_access |= hasByte(i->getType());
       observes_addresses |= i->hasAttribute(ParamAttrs::Align) ||
                             i->hasAttribute(ParamAttrs::Dereferenceable) ||
                             i->hasAttribute(ParamAttrs::DereferenceableOrNull);
@@ -1087,6 +1088,7 @@ static void calculateAndInitConstants(Transform &t) {
 
       for (auto op : i.operands()) {
         has_null_pointer |= has_nullptr(op);
+        does_int_mem_access |= hasByte(op->getType());
         update_min_vect_sz(op->getType());
       }
 
