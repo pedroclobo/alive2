@@ -1186,6 +1186,9 @@ static void calculateAndInitConstants(Transform &t) {
       } else if (auto *bc = isCast(ConversionOp::BitCast, i)) {
         auto &t = bc->getType();
         min_access_size = gcd(min_access_size, getCommonAccessSize(t));
+      } else if (auto *bc = isCast(ConversionOp::ByteCast, i)) {
+        auto &t = bc->getType();
+        min_access_size = gcd(min_access_size, getCommonAccessSize(t));
 
       } else if (auto *ic = dynamic_cast<const ICmp*>(&i)) {
         observes_addresses |= ic->isPtrCmp() &&

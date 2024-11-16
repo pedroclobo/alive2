@@ -335,7 +335,8 @@ public:
   Byte raw_load(const Pointer &p, std::set<smt::expr> &undef_vars);
   Byte raw_load(const Pointer &p);
 
-  StateValue bytesToValue(const std::vector<Byte> &bytes, const Type &toType);
+  StateValue bytesToValue(const std::vector<Byte> &bytes, const Type &toType,
+                          bool punning = false);
   std::vector<Byte> valueToBytes(const StateValue &val, const Type &fromType,
                                  State &s);
 
@@ -357,6 +358,8 @@ public:
 
   smt::expr ptr2int(const smt::expr &ptr, bool escape = true);
   smt::expr int2ptr(const smt::expr &val);
+  StateValue bytecast(StateValue &val, Type &fromType, const Type &toType,
+                      bool exact);
 
   std::tuple<smt::expr, Pointer, std::set<smt::expr>>
     refined(const Memory &other, bool fncall,

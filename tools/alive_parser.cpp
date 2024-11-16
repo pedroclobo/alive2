@@ -958,6 +958,7 @@ static unique_ptr<Instr> parse_conversionop(string_view name, token op_token) {
   ConversionOp::Op op;
   switch (op_token) {
   case BITCAST:  op = ConversionOp::BitCast; break;
+  case BYTECAST: op = ConversionOp::ByteCast; break;
   case SEXT:     op = ConversionOp::SExt; break;
   case ZEXT:     op = ConversionOp::ZExt; break;
   case TRUNC:    op = ConversionOp::Trunc; break;
@@ -1311,6 +1312,7 @@ static unique_ptr<Instr> parse_instr(string_view name) {
   case FMA:
     return parse_fp_ternary(name, t);
   case BITCAST:
+  case BYTECAST:
   case SEXT:
   case ZEXT:
   case TRUNC:

@@ -642,7 +642,8 @@ vector<Byte> Memory::valueToBytes(const StateValue &val, const Type &fromType,
   return bytes;
 }
 
-StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType) {
+StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType,
+                                bool punning) {
   assert(!bytes.empty());
 
   auto ub_pre = [&](expr &&e) -> expr {
@@ -653,7 +654,7 @@ StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType) {
     return std::move(e);
   };
 
-  bool is_asm = isAsmMode();
+  bool is_asm = isAsmMode() || punning;
 
   if (toType.isPtrType()) {
     assert(bytes.size() == bits_program_pointer / bits_byte);
@@ -2597,6 +2598,12 @@ expr Memory::int2ptr(const expr &val) {
   nextNonlocalBid();
   return
     Pointer::mkPhysical(*this, val.zextOrTrunc(bits_ptr_address)).release();
+}
+
+StateValue Memory::bytecast(StateValue &val, Type &from_type,
+                            const Type &to_type, bool exact) {
+  assert(!from_type.isAggregateType() && !to_type.isAggregateType());
+  return bytesToValue(valueToBytes(val, from_type, *state), to_type, !exact);
 }
 
 expr Memory::blockRefined(const Pointer &src, const Pointer &tgt) const {

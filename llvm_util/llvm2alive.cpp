@@ -283,6 +283,7 @@ public:
       case llvm::Instruction::ZExt:      op = ConversionOp::ZExt; break;
       case llvm::Instruction::Trunc:     op = ConversionOp::Trunc; break;
       case llvm::Instruction::BitCast:   op = ConversionOp::BitCast; break;
+      case llvm::Instruction::ByteCast: op = ConversionOp::ByteCast; break;
       case llvm::Instruction::PtrToInt:  op = ConversionOp::Ptr2Int; break;
       case llvm::Instruction::PtrToAddr: op = ConversionOp::Ptr2Addr; break;
       case llvm::Instruction::IntToPtr:  op = ConversionOp::Int2Ptr; break;
@@ -298,6 +299,9 @@ public:
             flags |= ConversionOp::NUW;
           if (TI->hasNoSignedWrap())
             flags |= ConversionOp::NSW;
+        } else if (const auto *EO = dyn_cast<llvm::PossiblyExactOperator>(&i)) {
+          if (EO->isExact())
+            flags |= ConversionOp::EXACT;
         }
         return make_unique<ConversionOp>(*ty, value_name(i), *val, op, flags);
       }
