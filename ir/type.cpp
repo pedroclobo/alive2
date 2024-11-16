@@ -195,6 +195,11 @@ expr Type::enforceIntOrVectorType(unsigned bits) const {
            [&](auto &ty) { return ty.enforceIntType(bits); });
 }
 
+expr Type::enforceByteOrVectorType(unsigned bits) const {
+  return enforceScalarOrVectorType(
+           [&](auto &ty) { return ty.enforceByteType(bits); });
+}
+
 expr Type::enforceIntOrFloatOrPtrOrVectorType() const {
   return enforceScalarOrVectorType(
     [&](auto &ty) { return ty.enforceIntOrPtrType() || ty.enforceFloatType();});
