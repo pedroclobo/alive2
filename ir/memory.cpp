@@ -633,7 +633,8 @@ vector<Byte> Memory::valueToBytes(const StateValue &val, const Type &fromType,
   return bytes;
 }
 
-StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType) {
+StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType,
+                                bool punning) {
   assert(!bytes.empty());
 
   auto ub_pre = [&](expr &&e) -> expr {
@@ -644,7 +645,7 @@ StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType) {
     return std::move(e);
   };
 
-  bool is_asm = isAsmMode();
+  bool is_asm = isAsmMode() || punning;
 
   if (toType.isPtrType()) {
     assert(bytes.size() == bits_program_pointer / bits_byte);
@@ -2582,6 +2583,26 @@ expr Memory::int2ptr(const expr &val) {
   nextNonlocalBid();
   return
     Pointer::mkPhysical(*this, val.zextOrTrunc(bits_ptr_address)).release();
+}
+
+StateValue Memory::bytecast(StateValue &val, Type &from_type,
+                            const Type &to_type, bool exact) {
+  assert(!from_type.isAggregateType() && !to_type.isAggregateType());
+  auto trunc = [](const Type &from, const Type &to) {
+    if (to.isPtrType())
+      return from.scalarSize() > bits_program_pointer;
+    return from.bits() > to.bits();
+  };
+
+  if (trunc(from_type, to_type)) {
+    unsigned to_bits = to_type.isPtrType()
+      ? bits_program_pointer
+      : to_type.bits();
+    val = val.zextOrTrunc(Byte::bitsByte() * to_bits / bits_byte);
+    from_type = ByteType("byte", to_bits);
+  }
+
+  return bytesToValue(valueToBytes(val, from_type, *state), to_type, !exact);
 }
 
 expr Memory::blockRefined(const Pointer &src, const Pointer &tgt) const {
