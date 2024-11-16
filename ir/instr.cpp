@@ -1589,6 +1589,7 @@ void ConversionOp::print(ostream &os) const {
   case ZExt:     str = "zext "; break;
   case Trunc:    str = "trunc "; break;
   case BitCast:  str = "bitcast "; break;
+  case ByteCast: str = "bytecast "; break;
   case Ptr2Int:  str = "ptrtoint "; break;
   case Int2Ptr:  str = "int2ptr "; break;
   }
@@ -1639,6 +1640,11 @@ StateValue ConversionOp::toSMT(State &s) const {
       return v;
 
     return getType().fromInt(val->getType().toInt(s, std::move(v)));
+
+  case ByteCast:
+    return s.getMemory().bytesToValue(
+        s.getMemory().valueToBytes(
+            v.zextOrTrunc(getType().bits()), getType(), s), getType());
 
   case Ptr2Int:
     fn = [&](auto &&val, auto &to_type) -> StateValue {
@@ -1692,6 +1698,10 @@ expr ConversionOp::getTypeConstraints(const Function &f) const {
         getType().enforcePtrOrVectorType() ==
           val->getType().enforcePtrOrVectorType() &&
         getType().sizeVar() == val->getType().sizeVar();
+    break;
+  case ByteCast:
+    c = getType().enforceIntOrPtrOrVectorType() &&
+        val->getType().enforceByteOrVectorType();
     break;
   case Ptr2Int:
     c = getType().enforceIntOrVectorType() &&
