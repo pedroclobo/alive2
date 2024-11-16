@@ -82,6 +82,29 @@ static string int_to_readable_float(Type &type, const string &val) {
   UNREACHABLE();
 }
 
+ByteConst::ByteConst(Type &type, vector<Byte> &val)
+  : Constant(type, "byte"), val(val) {}
+
+// FIXME: this is poorly implemented
+StateValue ByteConst::toSMT(State &s) const {
+  auto hasPtrType = [&] {
+    smt::expr isPtr = true;
+    for (auto &byte : val)
+      isPtr &= byte.isPtr();
+    return isPtr;
+  };
+
+  return { expr::mkIf(hasPtrType(),
+                      s.getMemory().bytesToValue(val, PtrType("byte")).value,
+                      s.getMemory().bytesToValue(val, IntType("byte")).value),
+           true };
+}
+
+expr ByteConst::getTypeConstraints() const {
+  return Value::getTypeConstraints() &&
+         getType().enforceByteType();
+}
+
 FloatConst::FloatConst(Type &type, string val, bool bit_value)
   : Constant(type, bit_value ? int_to_readable_float(type, val) : val),
   val(std::move(val)), bit_value(bit_value) {}

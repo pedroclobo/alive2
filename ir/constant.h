@@ -31,6 +31,16 @@ public:
 };
 
 
+class ByteConst final : public Constant {
+  std::vector<Byte> &val;
+
+public:
+  ByteConst(Type &type, std::vector<Byte> &val);
+  StateValue toSMT(State &s) const override;
+  smt::expr getTypeConstraints() const override;
+  auto getValue() const { return &val; }
+};
+
 class FloatConst final : public Constant {
   std::string val;
   bool bit_value;
