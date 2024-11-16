@@ -105,6 +105,11 @@ space+ {
   return INT_TYPE;
 }
 
+"b" [1-9][0-9]* {
+  yylval.num = strtoull((char*)YYTEXT+1, nullptr, 10);
+  return BYTE_TYPE;
+}
+
 "<" space* @tag1 [1-9][0-9]* space* "x" {
   yylval.num = strtoull((char*)tag1, nullptr, 10);
   return VECTOR_TYPE_PREFIX;

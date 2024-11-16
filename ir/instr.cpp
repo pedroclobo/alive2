@@ -1808,11 +1808,14 @@ expr ConversionOp::getTypeConstraints(const Function &f) const {
         getType().scalarSize().ult(val->getType().scalarSize());
     break;
   case BitCast:
-    c = getType().enforceIntOrFloatOrPtrOrVectorType() &&
+    c = getType().enforceIntOrByteOrFloatOrPtrOrVectorType() &&
         val->getType().enforceIntOrFloatOrPtrOrVectorType() &&
-        getType().enforcePtrOrVectorType() ==
+        ((getType().enforcePtrOrVectorType() ==
           val->getType().enforcePtrOrVectorType() &&
-        getType().sizeVar() == val->getType().sizeVar();
+          getType().sizeVar() == val->getType().sizeVar()) ||
+        (getType().enforceByteOrVectorType() &&
+          val->getType().enforcePtrOrVectorType() &&
+          getType().sizeVar() == bits_program_pointer));
     break;
   case Ptr2Int:
   case Ptr2Addr:

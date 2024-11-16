@@ -32,6 +32,7 @@ unordered_map<const llvm::Value*, string> value_names;
 unsigned value_id_counter = 0; // for %0, %1, etc..
 
 vector<unique_ptr<IntType>> int_types;
+vector<unique_ptr<ByteType>> byte_types;
 vector<unique_ptr<PtrType>> ptr_types;
 FloatType half_type("half", FloatType::Half);
 FloatType float_type("float", FloatType::Float);
@@ -114,12 +115,23 @@ Type& get_int_type(unsigned bits) {
   return *int_types[bits].get();
 }
 
+Type& get_byte_type(unsigned bits) {
+  assert (bits % 8 == 0);
+  if (bits / 8 >= byte_types.size())
+    byte_types.resize(bits / 8 + 1);
+  if (!byte_types[bits / 8])
+    byte_types[bits / 8] = make_unique<ByteType>("b" + to_string(bits), bits);
+  return *byte_types[bits / 8].get();
+}
+
 Type* llvm_type2alive(const llvm::Type *ty) {
   switch (ty->getTypeID()) {
   case llvm::Type::VoidTyID:
     return &Type::voidTy;
   case llvm::Type::IntegerTyID:
     return &get_int_type(cast<llvm::IntegerType>(ty)->getBitWidth());
+  case llvm::Type::ByteTyID:
+    return &get_byte_type(cast<llvm::ByteType>(ty)->getBitWidth());
   case llvm::Type::HalfTyID:
     return &half_type;
   case llvm::Type::FloatTyID:
@@ -502,6 +514,8 @@ void init_llvm_utils(ostream &os, const llvm::DataLayout &dataLayout) {
   type_id_counter = 0;
   int_types.resize(65);
   int_types[1] = make_unique<IntType>("i1", 1);
+  byte_types.resize(65);
+  byte_types[1] = make_unique<ByteType>("b8", 8);
   ptr_types.emplace_back(make_unique<PtrType>(0));
   DL = &dataLayout;
 }

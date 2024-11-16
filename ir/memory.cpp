@@ -2275,6 +2275,9 @@ unsigned Memory::getStoreByteSize(const Type &ty) {
   if (ty.isPtrType())
     return divide_up(bits_program_pointer, 8);
 
+  if (ty.isByteType())
+    return divide_up(ty.bw(), 8);
+
   auto aty = ty.getAsAggregateType();
   if (aty && !isNonPtrVector(ty)) {
     unsigned sz = 0;
