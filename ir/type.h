@@ -89,7 +89,9 @@ public:
 
   smt::expr enforceIntOrVectorType(unsigned bits = 0) const;
   smt::expr enforceIntOrFloatOrPtrOrVectorType() const;
+  smt::expr enforceIntOrByteOrFloatOrPtrOrVectorType() const;
   smt::expr enforceIntOrPtrOrVectorType() const;
+  smt::expr enforceByteOrVectorType(unsigned bits = 0) const;
   smt::expr enforceFloatOrVectorType() const;
   smt::expr enforcePtrOrVectorType() const;
 
