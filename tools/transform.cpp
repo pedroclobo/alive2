@@ -566,7 +566,7 @@ check_refinement(Errors &errs, const Transform &t, State &src_state,
       errs.add("Precondition is always false", false);
       return;
     }
-  
+
     vector<pair<expr, expr>> repls;
     auto vars_pre = pre_src.vars();
     for (auto &v : qvars) {
@@ -1151,6 +1151,9 @@ static void calculateAndInitConstants(Transform &t) {
         has_ptr2int |= isCast(ConversionOp::Ptr2Int, i) != nullptr;
 
       } else if (auto *bc = isCast(ConversionOp::BitCast, i)) {
+        auto &t = bc->getType();
+        min_access_size = gcd(min_access_size, getCommonAccessSize(t));
+      } else if (auto *bc = isCast(ConversionOp::ByteCast, i)) {
         auto &t = bc->getType();
         min_access_size = gcd(min_access_size, getCommonAccessSize(t));
 
