@@ -1639,6 +1639,10 @@ StateValue ConversionOp::toSMT(State &s) const {
         getType().getAsAggregateType()->getChild(0).isPtrType())
       return v;
 
+    if (getType().isByteType())
+      return s.getMemory().bytesToValue(
+               s.getMemory().valueToBytes(v, val->getType(), s), getType());
+
     return getType().fromInt(val->getType().toInt(s, std::move(v)));
 
   case ByteCast:
@@ -1692,7 +1696,7 @@ expr ConversionOp::getTypeConstraints(const Function &f) const {
         getType().scalarSize().ult(val->getType().scalarSize());
     break;
   case BitCast:
-    c = getType().enforceIntOrFloatOrPtrOrVectorType() &&
+    c = getType().enforceIntOrByteOrFloatOrPtrOrVectorType() &&
         val->getType().enforceIntOrFloatOrPtrOrVectorType() &&
         getType().enforcePtrOrVectorType() ==
           val->getType().enforcePtrOrVectorType() &&
