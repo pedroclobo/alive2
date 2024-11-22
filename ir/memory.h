@@ -335,6 +335,10 @@ public:
   Byte raw_load(const Pointer &p, std::set<smt::expr> &undef_vars);
   Byte raw_load(const Pointer &p);
 
+  StateValue bytesToValue(const std::vector<Byte> &bytes, const Type &toType);
+  std::vector<Byte> valueToBytes(const StateValue &val, const Type &fromType,
+                                 State &s);
+
   void memset(const smt::expr &ptr, const StateValue &val,
               const smt::expr &bytesize, uint64_t align,
               const std::set<smt::expr> &undef_vars, bool deref_check = true);

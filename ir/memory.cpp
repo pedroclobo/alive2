@@ -588,21 +588,23 @@ static void pad(StateValue &v, unsigned amount, State &s) {
     pad(v.non_poison);
 }
 
-static vector<Byte> valueToBytes(const StateValue &val, const Type &fromType,
-                                 const Memory &mem, State &s) {
+namespace IR {
+
+vector<Byte> Memory::valueToBytes(const StateValue &val, const Type &fromType,
+                                  State &s) {
   vector<Byte> bytes;
   if (fromType.isPtrType()) {
-    Pointer p(mem, val.value);
+    Pointer p(*this, val.value);
     unsigned bytesize = bits_program_pointer / bits_byte;
 
     // constant global can't store pointers that alias with local blocks
     if (s.isInitializationPhase() && !p.isLocal().isFalse()) {
       expr bid  = expr::mkUInt(0, 1).concat(p.getShortBid());
-      p = Pointer(mem, bid, p.getOffset(), p.getAttrs());
+      p = Pointer(*this, bid, p.getOffset(), p.getAttrs());
     }
 
     for (unsigned i = 0; i < bytesize; ++i)
-      bytes.emplace_back(mem, StateValue(expr(p()), expr(val.non_poison)), i);
+      bytes.emplace_back(*this, StateValue(expr(p()), expr(val.non_poison)), i);
   } else {
     assert(!fromType.isAggregateType() || isNonPtrVector(fromType));
     StateValue bvval = fromType.toInt(s, val);
@@ -610,7 +612,7 @@ static vector<Byte> valueToBytes(const StateValue &val, const Type &fromType,
     unsigned bytesize = divide_up(bitsize, bits_byte);
 
     // There are no sub-byte accesses in assembly
-    if (mem.isAsmMode() && (bitsize % 8) != 0) {
+    if (isAsmMode() && (bitsize % 8) != 0) {
       s.addUB(expr(false));
     }
 
@@ -622,25 +624,24 @@ static vector<Byte> valueToBytes(const StateValue &val, const Type &fromType,
         bvval.value.extract((i + 1) * bits_byte - 1, i * bits_byte),
         bvval.non_poison.extract((i + 1) * np_mul - 1, i * np_mul)
       };
-      bytes.emplace_back(mem, data, bitsize, i);
+      bytes.emplace_back(*this, data, bitsize, i);
     }
   }
   return bytes;
 }
 
-static StateValue bytesToValue(const Memory &m, const vector<Byte> &bytes,
-                               const Type &toType) {
+StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType) {
   assert(!bytes.empty());
 
   auto ub_pre = [&](expr &&e) -> expr {
     if (config::disallow_ub_exploitation) {
-      m.getState().addPre(std::move(e));
+      getState().addPre(std::move(e));
       return true;
     }
     return std::move(e);
   };
 
-  bool is_asm = m.isAsmMode();
+  bool is_asm = isAsmMode();
 
   if (toType.isPtrType()) {
     assert(bytes.size() == bits_program_pointer / bits_byte);
@@ -684,7 +685,7 @@ static StateValue bytesToValue(const Memory &m, const vector<Byte> &bytes,
         high2 >= high && low2 <= low) {
       // do nothing
     } else {
-      loaded_ptr = expr::mkIf(is_ptr, loaded_ptr, Pointer::mkNullPointer(m)());
+      loaded_ptr = expr::mkIf(is_ptr, loaded_ptr, Pointer::mkNullPointer(*this)());
     }
     return { std::move(loaded_ptr), std::move(non_poison) };
 
@@ -717,8 +718,6 @@ static StateValue bytesToValue(const Memory &m, const vector<Byte> &bytes,
     return toType.fromInt(val.trunc(bitsize, toType.np_bits(true)));
   }
 }
-
-namespace IR {
 
 Memory::AliasSet::AliasSet(const Memory &m)
   : local(m.numLocals(), false), non_local(m.numNonlocals(), false) {}
@@ -2303,7 +2302,7 @@ void Memory::store(const StateValue &v, const Type &type, unsigned offset0,
     assert(byteofs == getStoreByteSize(type));
 
   } else {
-    vector<Byte> bytes = valueToBytes(v, type, *this, *state);
+    vector<Byte> bytes = valueToBytes(v, type, *state);
     assert(!v.isValid() || bytes.size() * bytesz == getStoreByteSize(type));
 
     for (unsigned i = 0, e = bytes.size(); i < e; ++i) {
@@ -2354,7 +2353,7 @@ StateValue Memory::load(const Pointer &ptr, const Type &type, set<expr> &undef,
   bool is_ptr = type.isPtrType();
   auto loadedBytes = load(ptr, bytecount, undef, align, little_endian,
                           is_ptr ? DATA_PTR : DATA_INT);
-  auto val = bytesToValue(*this, loadedBytes, type);
+  auto val = bytesToValue(loadedBytes, type);
 
   // partial order reduction for fresh pointers
   // can alias [0, next_ptr++] U extra_tgt_consts
@@ -2421,7 +2420,7 @@ void Memory::memset(const expr &p, const StateValue &val, const expr &bytesize,
   }
   assert(!val.isValid() || wval.bits() == bits_byte);
 
-  auto bytes = valueToBytes(wval, IntType("", bits_byte), *this, *state);
+  auto bytes = valueToBytes(wval, IntType("", bits_byte), *state);
   assert(bytes.size() == 1);
   expr raw_byte = std::move(bytes[0])();
 
