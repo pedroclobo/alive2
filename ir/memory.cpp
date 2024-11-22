@@ -569,136 +569,6 @@ static void pad(StateValue &v, unsigned amount, State &s) {
     pad(v.non_poison);
 }
 
-static vector<Byte> valueToBytes(const StateValue &val, const Type &fromType,
-                                 const Memory &mem, State &s) {
-  vector<Byte> bytes;
-  if (fromType.isPtrType()) {
-    Pointer p(mem, val.value);
-    unsigned bytesize = bits_program_pointer / bits_byte;
-
-    // constant global can't store pointers that alias with local blocks
-    if (s.isInitializationPhase() && !p.isLocal().isFalse()) {
-      expr bid  = expr::mkUInt(0, 1).concat(p.getShortBid());
-      p = Pointer(mem, bid, p.getOffset(), p.getAttrs());
-    }
-
-    for (unsigned i = 0; i < bytesize; ++i)
-      bytes.emplace_back(mem, StateValue(expr(p()), expr(val.non_poison)), i);
-  } else {
-    assert(!fromType.isAggregateType() || isNonPtrVector(fromType));
-    StateValue bvval = fromType.toInt(s, val);
-    unsigned bitsize = bvval.bits();
-    unsigned bytesize = divide_up(bitsize, bits_byte);
-
-    // There are no sub-byte accesses in assembly
-    if (mem.isAsmMode() && (bitsize % 8) != 0) {
-      s.addUB(expr(false));
-    }
-
-    pad(bvval, bytesize * bits_byte - bitsize, s);
-    unsigned np_mul = bits_poison_per_byte;
-
-    for (unsigned i = 0; i < bytesize; ++i) {
-      StateValue data {
-        bvval.value.extract((i + 1) * bits_byte - 1, i * bits_byte),
-        bvval.non_poison.extract((i + 1) * np_mul - 1, i * np_mul)
-      };
-      bytes.emplace_back(mem, data, bitsize, i);
-    }
-  }
-  return bytes;
-}
-
-static StateValue bytesToValue(const Memory &m, const vector<Byte> &bytes,
-                               const Type &toType) {
-  assert(!bytes.empty());
-
-  auto ub_pre = [&](expr &&e) -> expr {
-    if (config::disallow_ub_exploitation) {
-      m.getState().addPre(std::move(e));
-      return true;
-    }
-    return std::move(e);
-  };
-
-  bool is_asm = m.isAsmMode();
-
-  if (toType.isPtrType()) {
-    assert(bytes.size() == bits_program_pointer / bits_byte);
-    expr loaded_ptr, is_ptr;
-    // The result is not poison if all of these hold:
-    // (1) There's no poison byte, and they are all pointer bytes
-    // (2) All of the bytes have the same information
-    // (3) Byte offsets should be correct
-    // A zero integer byte is considered as a null pointer byte with any byte
-    // offset.
-    expr non_poison = true;
-
-    for (unsigned i = 0, e = bytes.size(); i < e; ++i) {
-      auto &b = bytes[i];
-      expr ptr_value = b.ptrValue();
-      expr b_is_ptr  = b.isPtr();
-
-      if (i == 0) {
-        loaded_ptr = ptr_value;
-        is_ptr     = std::move(b_is_ptr);
-      } else {
-        non_poison &= ub_pre(is_ptr == b_is_ptr);
-      }
-
-      non_poison &=
-        ub_pre(expr::mkIf(is_ptr,
-                          b.ptrByteoffset() == i && ptr_value == loaded_ptr,
-                          b.nonptrValue() == 0));
-      non_poison &= !b.isPoison();
-    }
-    if (is_asm)
-      non_poison = true;
-
-    // if bits of loaded ptr are a subset of the non-ptr value,
-    // we know they must be zero otherwise the value is poison.
-    // Therefore we obtain a null pointer for free.
-    expr _;
-    unsigned low, high, low2, high2;
-    if (loaded_ptr.isExtract(_, high, low) &&
-        bytes[0].nonptrValue().isExtract(_, high2, low2) &&
-        high2 >= high && low2 <= low) {
-      // do nothing
-    } else {
-      loaded_ptr = expr::mkIf(is_ptr, loaded_ptr, Pointer::mkNullPointer(m)());
-    }
-    return { std::move(loaded_ptr), std::move(non_poison) };
-
-  } else {
-    assert(!toType.isAggregateType() || isNonPtrVector(toType));
-    auto bitsize = toType.bits();
-    assert(divide_up(bitsize, bits_byte) == bytes.size());
-
-    StateValue val;
-    bool first = true;
-    IntType ibyteTy("", bits_byte);
-    unsigned byte_number = 0;
-
-    for (auto &b: bytes) {
-      expr expr_np = ub_pre(!b.isPtr());
-
-      if (num_sub_byte_bits) {
-        unsigned bits = (bitsize % 8) == 0 ? 0 : bitsize;
-        expr_np &= b.numStoredBits() == bits;
-        expr_np &= b.byteNumber() == byte_number++;
-      }
-      if (is_asm)
-        expr_np = true;
-
-      StateValue v(is_asm ? b.forceCastToInt() : b.nonptrValue(),
-                   ibyteTy.combine_poison(expr_np, b.nonptrNonpoison()));
-      val = first ? std::move(v) : v.concat(val);
-      first = false;
-    }
-    return toType.fromInt(val.trunc(bitsize, toType.np_bits(true)));
-  }
-}
-
 namespace IR {
 
 Memory::AliasSet::AliasSet(const Memory &m)
@@ -1153,6 +1023,135 @@ vector<Byte> Memory::load(const Pointer &ptr, unsigned bytes, set<expr> &undef,
     ret.emplace_back(*this, *std::move(disj)());
   }
   return ret;
+}
+
+vector<Byte> Memory::valueToBytes(const StateValue &val, const Type &fromType,
+                                  State &s) {
+  vector<Byte> bytes;
+  if (fromType.isPtrType()) {
+    Pointer p(*this, val.value);
+    unsigned bytesize = bits_program_pointer / bits_byte;
+
+    // constant global can't store pointers that alias with local blocks
+    if (s.isInitializationPhase() && !p.isLocal().isFalse()) {
+      expr bid  = expr::mkUInt(0, 1).concat(p.getShortBid());
+      p = Pointer(*this, bid, p.getOffset(), p.getAttrs());
+    }
+
+    for (unsigned i = 0; i < bytesize; ++i)
+      bytes.emplace_back(*this, StateValue(expr(p()), expr(val.non_poison)), i);
+  } else {
+    assert(!fromType.isAggregateType() || isNonPtrVector(fromType));
+    StateValue bvval = fromType.toInt(s, val);
+    unsigned bitsize = bvval.bits();
+    unsigned bytesize = divide_up(bitsize, bits_byte);
+
+    // There are no sub-byte accesses in assembly
+    if (isAsmMode() && (bitsize % 8) != 0) {
+      s.addUB(expr(false));
+    }
+
+    pad(bvval, bytesize * bits_byte - bitsize, s);
+    unsigned np_mul = bits_poison_per_byte;
+
+    for (unsigned i = 0; i < bytesize; ++i) {
+      StateValue data {
+        bvval.value.extract((i + 1) * bits_byte - 1, i * bits_byte),
+        bvval.non_poison.extract((i + 1) * np_mul - 1, i * np_mul)
+      };
+      bytes.emplace_back(*this, data, bitsize, i);
+    }
+  }
+  return bytes;
+}
+
+StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType) {
+  assert(!bytes.empty());
+
+  auto ub_pre = [&](expr &&e) -> expr {
+    if (config::disallow_ub_exploitation) {
+      getState().addPre(std::move(e));
+      return true;
+    }
+    return std::move(e);
+  };
+
+  bool is_asm = isAsmMode();
+
+  if (toType.isPtrType()) {
+    assert(bytes.size() == bits_program_pointer / bits_byte);
+    expr loaded_ptr, is_ptr;
+    // The result is not poison if all of these hold:
+    // (1) There's no poison byte, and they are all pointer bytes
+    // (2) All of the bytes have the same information
+    // (3) Byte offsets should be correct
+    // A zero integer byte is considered as a null pointer byte with any byte
+    // offset.
+    expr non_poison = true;
+
+    for (unsigned i = 0, e = bytes.size(); i < e; ++i) {
+      auto &b = bytes[i];
+      expr ptr_value = b.ptrValue();
+      expr b_is_ptr  = b.isPtr();
+
+      if (i == 0) {
+        loaded_ptr = ptr_value;
+        is_ptr     = std::move(b_is_ptr);
+      } else {
+        non_poison &= ub_pre(is_ptr == b_is_ptr);
+      }
+
+      non_poison &=
+        ub_pre(expr::mkIf(is_ptr,
+                          b.ptrByteoffset() == i && ptr_value == loaded_ptr,
+                          b.nonptrValue() == 0));
+      non_poison &= !b.isPoison();
+    }
+    if (is_asm)
+      non_poison = true;
+
+    // if bits of loaded ptr are a subset of the non-ptr value,
+    // we know they must be zero otherwise the value is poison.
+    // Therefore we obtain a null pointer for free.
+    expr _;
+    unsigned low, high, low2, high2;
+    if (loaded_ptr.isExtract(_, high, low) &&
+        bytes[0].nonptrValue().isExtract(_, high2, low2) &&
+        high2 >= high && low2 <= low) {
+      // do nothing
+    } else {
+      loaded_ptr = expr::mkIf(is_ptr, loaded_ptr, Pointer::mkNullPointer(*this)());
+    }
+    return { std::move(loaded_ptr), std::move(non_poison) };
+
+  } else {
+    assert(!toType.isAggregateType() || isNonPtrVector(toType));
+    auto bitsize = toType.bits();
+    assert(divide_up(bitsize, bits_byte) == bytes.size());
+
+    StateValue val;
+    bool first = true;
+    IntType ibyteTy("", bits_byte);
+    unsigned byte_number = 0;
+
+    for (auto &b: bytes) {
+      expr expr_np = ub_pre(!b.isPtr());
+
+      if (num_sub_byte_bits) {
+        unsigned bits = (bitsize % 8) == 0 ? 0 : bitsize;
+        expr_np &= b.numStoredBits() == bits;
+        expr_np &= b.byteNumber() == byte_number++;
+      }
+      if (is_asm)
+        expr_np = true;
+
+      StateValue v(is_asm ? b.forceCastToInt() : b.nonptrValue(),
+                   ibyteTy.combine_poison(expr_np, b.nonptrNonpoison()));
+      val = first ? std::move(v) : v.concat(val);
+      first = false;
+    }
+    return toType.fromInt(val.trunc(bitsize, toType.np_bits(true)));
+  }
 }
 
 Memory::DataType Memory::data_type(const vector<pair<unsigned, expr>> &data,
@@ -2182,7 +2181,7 @@ void Memory::store(const StateValue &v, const Type &type, unsigned offset0,
     assert(byteofs == getStoreByteSize(type));
 
   } else {
-    vector<Byte> bytes = valueToBytes(v, type, *this, *state);
+    vector<Byte> bytes = valueToBytes(v, type, *state);
     assert(!v.isValid() || bytes.size() * bytesz == getStoreByteSize(type));
 
     for (unsigned i = 0, e = bytes.size(); i < e; ++i) {
@@ -2233,7 +2232,7 @@ StateValue Memory::load(const Pointer &ptr, const Type &type, set<expr> &undef,
   bool is_ptr = type.isPtrType();
   auto loadedBytes = load(ptr, bytecount, undef, align, little_endian,
                           is_ptr ? DATA_PTR : DATA_INT);
-  auto val = bytesToValue(*this, loadedBytes, type);
+  auto val = bytesToValue(loadedBytes, type);
 
   // partial order reduction for fresh pointers
   // can alias [0, next_ptr++] U extra_tgt_consts
@@ -2300,7 +2299,7 @@ void Memory::memset(const expr &p, const StateValue &val, const expr &bytesize,
   }
   assert(!val.isValid() || wval.bits() == bits_byte);
 
-  auto bytes = valueToBytes(wval, IntType("", bits_byte), *this, *state);
+  auto bytes = valueToBytes(wval, IntType("", bits_byte), *state);
   assert(bytes.size() == 1);
   expr raw_byte = std::move(bytes[0])();
 
