@@ -291,6 +291,10 @@ expr Byte::ptrNonpoison() const {
   return isAsmMode() ? expr(true) : p.extract(bit, bit) == 1;
 }
 
+expr Byte::raw() const {
+  return p;
+}
+
 Pointer Byte::ptr() const {
   return { m, ptrValue() };
 }
@@ -1040,6 +1044,8 @@ vector<Byte> Memory::valueToBytes(const StateValue &val, const Type &fromType,
 
     for (unsigned i = 0; i < bytesize; ++i)
       bytes.emplace_back(*this, StateValue(expr(p()), expr(val.non_poison)), i);
+  } else if (fromType.isByteType()) {
+    bytes.emplace_back(*this, expr(val.value));
   } else {
     assert(!fromType.isAggregateType() || isNonPtrVector(fromType));
     StateValue bvval = fromType.toInt(s, val);
@@ -1123,6 +1129,9 @@ StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType) {
       loaded_ptr = expr::mkIf(is_ptr, loaded_ptr, Pointer::mkNullPointer(*this)());
     }
     return { std::move(loaded_ptr), std::move(non_poison) };
+
+  } else if (toType.isByteType()) {
+    return { std::move(bytes[0].raw()), true /* byte is never poison */ };
 
   } else {
     assert(!toType.isAggregateType() || isNonPtrVector(toType));

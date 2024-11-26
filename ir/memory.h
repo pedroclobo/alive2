@@ -61,6 +61,7 @@ public:
 
   smt::expr isPtr() const;
   smt::expr ptrNonpoison() const;
+  smt::expr raw() const;
   Pointer ptr() const;
   smt::expr ptrValue() const;
   smt::expr ptrByteoffset() const;
