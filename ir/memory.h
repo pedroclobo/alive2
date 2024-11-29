@@ -59,6 +59,7 @@ public:
 
   static Byte mkPoisonByte(const Memory &m);
 
+  smt::expr rawValue() const;
   smt::expr isPtr() const;
   smt::expr ptrNonpoison() const;
   Pointer ptr() const;
