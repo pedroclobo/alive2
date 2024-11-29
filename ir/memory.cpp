@@ -605,6 +605,18 @@ vector<Byte> Memory::valueToBytes(const StateValue &val, const Type &fromType,
 
     for (unsigned i = 0; i < bytesize; ++i)
       bytes.emplace_back(*this, StateValue(expr(p()), expr(val.non_poison)), i);
+  } else if (fromType.isByteType()) {
+    unsigned bitsize = val.bits();
+    unsigned bytesize = divide_up(bitsize, Byte::bitsByte());
+
+    StateValue byval = fromType.toInt(s, val);
+    pad(byval, bytesize * Byte::bitsByte() - bitsize, s);
+
+    for (unsigned i = 0; i < bytesize; ++i)
+      bytes.emplace_back(
+        *this,
+        byval.value.extract((i + 1) * Byte::bitsByte() - 1, i * Byte::bitsByte())
+      );
   } else {
     assert(!fromType.isAggregateType() || isNonPtrVector(fromType));
     StateValue bvval = fromType.toInt(s, val);
@@ -688,7 +700,17 @@ StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType) {
       loaded_ptr = expr::mkIf(is_ptr, loaded_ptr, Pointer::mkNullPointer(*this)());
     }
     return { std::move(loaded_ptr), std::move(non_poison) };
+  } else if (toType.isByteType()) {
+    auto bitsize = toType.bits();
+    assert(divide_up(bitsize, Byte::bitsByte()) == bytes.size());
 
+    StateValue val;
+    for (unsigned i = 0, e = bytes.size(); i < e; ++i) {
+      auto &b = bytes[i];
+      StateValue v(expr(b.p), true);
+      val = i == 0 ? std::move(v) : v.concat(val);
+    }
+    return val;
   } else {
     assert(!toType.isAggregateType() || isNonPtrVector(toType));
     auto bitsize = toType.bits();
