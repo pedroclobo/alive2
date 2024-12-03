@@ -587,12 +587,17 @@ vector<Byte> Memory::valueToBytes(const StateValue &val, const Type &fromType,
     for (unsigned i = 0; i < bytesize; ++i)
       bytes.emplace_back(*this, StateValue(expr(p()), expr(val.non_poison)), i);
   } else if (fromType.isByteType()) {
+    unsigned bitsize = val.bits();
     unsigned byte_bits_byte = Byte::bitsByte();
-    unsigned bytesize = val.bits() / byte_bits_byte;
+    unsigned bytesize = divide_up(bitsize, byte_bits_byte);
+
+    StateValue byval = fromType.toInt(s, val);
+    pad(byval, bytesize * byte_bits_byte - bitsize, s);
+
     for (unsigned i = 0; i < bytesize; ++i)
       bytes.emplace_back(
         *this,
-        val.value.extract((i + 1) * byte_bits_byte - 1, i * byte_bits_byte)
+        byval.value.extract((i + 1) * byte_bits_byte - 1, i * byte_bits_byte)
       );
   } else {
     assert(!fromType.isAggregateType() || isNonPtrVector(fromType));
@@ -619,7 +624,8 @@ vector<Byte> Memory::valueToBytes(const StateValue &val, const Type &fromType,
   return bytes;
 }
 
-StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType) {
+StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType,
+                                bool fromInt) {
   assert(!bytes.empty());
 
   auto ub_pre = [&](expr &&e) -> expr {
@@ -678,10 +684,16 @@ StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType) {
     }
     return { std::move(loaded_ptr), std::move(non_poison) };
   } else if (toType.isByteType()) {
+    auto bitsize = toType.bits();
+    assert(divide_up(bitsize, bits_byte) == bytes.size());
+
     StateValue val;
     for (unsigned i = 0, e = bytes.size(); i < e; ++i) {
       auto &b = bytes[i];
-      StateValue v(expr(b.p), true); // byte is never poison
+      StateValue v(
+        expr(fromInt ? b.nonptrValue() : b.p),
+        true // byte is never poison
+      );
       val = i == 0 ? std::move(v) : v.concat(val);
     }
     return val;

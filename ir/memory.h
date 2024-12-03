@@ -340,7 +340,8 @@ public:
   Byte raw_load(const Pointer &p, std::set<smt::expr> &undef_vars);
   Byte raw_load(const Pointer &p);
 
-  StateValue bytesToValue(const std::vector<Byte> &bytes, const Type &toType);
+  StateValue bytesToValue(const std::vector<Byte> &bytes, const Type &toType,
+                          bool fromInt = false);
   std::vector<Byte> valueToBytes(const StateValue &val, const Type &fromType,
                                  State &s);
 

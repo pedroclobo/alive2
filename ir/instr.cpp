@@ -1641,7 +1641,7 @@ StateValue ConversionOp::toSMT(State &s) const {
 
     if (getType().isByteType())
       return s.getMemory().bytesToValue(
-               s.getMemory().valueToBytes(v, val->getType(), s), getType());
+               s.getMemory().valueToBytes(v, val->getType(), s), getType(), true);
 
     return getType().fromInt(val->getType().toInt(s, std::move(v)));
 
