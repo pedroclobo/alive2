@@ -1000,7 +1000,6 @@ static void calculateAndInitConstants(Transform &t) {
   num_locals_tgt = 0;
   uint64_t max_gep_src = 0, max_gep_tgt = 0;
   uint64_t max_alloc_size = 0;
-  uint64_t max_access_size = 0;
   uint64_t min_global_size = UINT64_MAX;
 
   bool has_null_pointer = false;
@@ -1022,8 +1021,6 @@ static void calculateAndInitConstants(Transform &t) {
   set<string> inaccessiblememonly_fns;
   num_inaccessiblememonly_fns = 0;
 
-  // Minimum access size (in bytes)
-  uint64_t min_access_size = 8;
   uint64_t loc_src_alloc_aligned_size = 0;
   uint64_t loc_tgt_alloc_aligned_size = 0;
   unsigned min_vect_elem_sz = 0;

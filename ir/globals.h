@@ -3,6 +3,8 @@
 // Copyright (c) 2018-present The Alive2 Authors.
 // Distributed under the MIT license that can be found in the LICENSE file.
 
+#include <cstdint>
+
 namespace smt { class expr; }
 
 namespace IR {
@@ -54,6 +56,12 @@ extern unsigned bits_byte;
 /// Required bits to store the size of sub-byte accesses
 /// (e.g., store i5 -> we record 4, so 3 bits)
 extern unsigned num_sub_byte_bits;
+
+/// Minimum access size (in bytes)
+extern uint64_t min_access_size;
+
+/// Maximum access size (in bytes)
+extern uint64_t max_access_size;
 
 extern unsigned strlen_unroll_cnt;
 extern unsigned memcmp_unroll_cnt;
