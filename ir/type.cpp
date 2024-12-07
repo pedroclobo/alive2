@@ -431,7 +431,7 @@ void IntType::print(ostream &os) const {
 
 
 unsigned ByteType::bits() const {
-  return Byte::bitsByte() * bitwidth / 8;
+  return Byte::bitsByte() * bitwidth / 8 / min_access_size;
 }
 
 StateValue ByteType::getDummyValue(bool non_poison) const {
