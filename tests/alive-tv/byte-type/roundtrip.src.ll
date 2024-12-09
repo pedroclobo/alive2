@@ -21,3 +21,9 @@ define i64 @f4(i64 %b) {
   %2 = bytecast exact b64 %1 to i64
   ret i64 %2
 }
+
+define <2 x i32> @f5(<2 x i32> %b) {
+  %1 = bitcast <2 x i32> %b to <2 x b32>
+  %2 = bytecast exact <2 x b32> %1 to <2 x i32>
+  ret <2 x i32> %2
+}

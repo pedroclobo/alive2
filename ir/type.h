@@ -202,6 +202,7 @@ public:
 
   unsigned bw() const override;
   unsigned bits() const override;
+  unsigned np_bits(bool fromInt) const override;
   IR::StateValue getDummyValue(bool non_poison) const override;
   smt::expr getTypeConstraints() const override;
   smt::expr sizeVar() const override;
@@ -210,6 +211,14 @@ public:
   bool isByteType() const override;
   smt::expr enforceByteType(unsigned bits = 0) const override;
   const ByteType* getAsByteType() const override;
+  smt::expr toBV(smt::expr e) const override;
+  IR::StateValue toBV(IR::StateValue v) const override;
+  smt::expr fromBV(smt::expr e) const override;
+  IR::StateValue fromBV(IR::StateValue v) const override;
+  smt::expr toInt(State &s, smt::expr v) const override;
+  IR::StateValue toInt(State &s, IR::StateValue v) const override;
+  smt::expr fromInt(smt::expr v) const override;
+  IR::StateValue fromInt(IR::StateValue v) const override;
   std::pair<smt::expr, smt::expr>
     refines(State &src_s, State &tgt_s, const StateValue &src,
             const StateValue &tgt) const override;
@@ -478,6 +487,7 @@ public:
 bool hasPtr(const Type &t);
 bool hasByte(const Type &t);
 bool isNonPtrVector(const Type &t);
+bool isByteVector(const Type &t);
 unsigned minVectorElemSize(const Type &t);
 uint64_t getCommonAccessSize(const Type &ty);
 }
