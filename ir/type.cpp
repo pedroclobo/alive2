@@ -976,7 +976,9 @@ StateValue AggregateType::extract(const StateValue &val, unsigned index,
   }
 
   StateValue sv(val.value.extract(h_val, l_val),
-                val.non_poison.extract(h_np, l_np));
+                val.non_poison.isBool()
+                  ? expr(val.non_poison)
+                  : val.non_poison.extract(h_np, l_np));
   return fromInt ? children[index]->fromInt(std::move(sv)) :
                    children[index]->fromBV(std::move(sv));
 }
@@ -1275,6 +1277,7 @@ expr VectorType::getTypeConstraints() const {
   auto &elementTy = *children[0];
   expr r = AggregateType::getTypeConstraints() &&
            (elementTy.enforceIntType() ||
+            elementTy.enforceByteType() ||
             elementTy.enforceFloatType() ||
             elementTy.enforcePtrType()) &&
            numElements() != 0;
@@ -1656,6 +1659,11 @@ bool hasByte(const Type &t) {
 bool isNonPtrVector(const Type &t) {
   auto vty = dynamic_cast<const VectorType *>(&t);
   return vty && !vty->getChild(0).isPtrType();
+}
+
+bool isByteVector(const Type &t) {
+  auto vty = dynamic_cast<const VectorType *>(&t);
+  return vty && vty->getChild(0).isByteType();
 }
 
 unsigned minVectorElemSize(const Type &t) {
