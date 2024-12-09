@@ -21,3 +21,8 @@ define i64 @f4(ptr %p) {
   %c = bytecast b64 %v to i64
   ret i64 %c
 }
+
+define i8 @f5() {
+  %c = bytecast b8 3 to i8
+  ret i8 %c
+}
