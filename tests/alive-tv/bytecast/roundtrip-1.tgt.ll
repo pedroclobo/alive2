@@ -13,3 +13,7 @@ define b32 @f3(b32 %b) {
 define b64 @f4(b64 %b) {
   ret b64 %b
 }
+
+define b8 @f5() {
+  ret b8 2
+}

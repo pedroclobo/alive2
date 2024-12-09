@@ -17,3 +17,7 @@ define i64 @f4(ptr %p) {
   %v = load i64, ptr %p
   ret i64 %v
 }
+
+define i8 @f5() {
+  ret i8 3
+}
