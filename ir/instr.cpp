@@ -1639,15 +1639,46 @@ StateValue ConversionOp::toSMT(State &s) const {
         getType().getAsAggregateType()->getChild(0).isPtrType())
       return v;
 
-    if (getType().isByteType())
+    if (getType().isVectorType() &&
+        getType().getAsAggregateType()->getChild(0).isByteType()) {
+      vector<StateValue> vals;
+      auto retty = getType().getAsAggregateType();
+      auto elems = retty->numElementsConst();
+      auto valty = val->getType().getAsAggregateType();
+
+      for (unsigned i = 0; i != elems; ++i) {
+        vals.emplace_back(s.getMemory().bytesToValue(
+          s.getMemory().valueToBytes(valty->extract(v, i), valty->getChild(i), s),
+          retty->getChild(i)));
+      }
+      return retty->aggregateVals(vals);
+    }
+
+    if (getType().isByteType()) {
       return s.getMemory().bytesToValue(
                s.getMemory().valueToBytes(v, val->getType(), s), getType());
+    }
 
     return getType().fromInt(val->getType().toInt(s, std::move(v)));
 
-  case ByteCast:
+  case ByteCast: {
+    if (getType().isVectorType()) {
+      vector<StateValue> vals;
+      auto retty = getType().getAsAggregateType();
+      auto elems = retty->numElementsConst();
+      auto valty = val->getType().getAsAggregateType();
+
+      for (unsigned i = 0; i != elems; ++i) {
+        vals.emplace_back(s.getMemory().bytesToValue(
+          s.getMemory().valueToBytes(valty->extract(v, i), valty->getChild(i), s),
+          retty->getChild(i)));
+      }
+      return retty->aggregateVals(vals);
+    }
+
     return s.getMemory().bytesToValue(
              s.getMemory().valueToBytes(v, val->getType(), s), getType());
+  }
 
   case Ptr2Int:
     fn = [&](auto &&val, auto &to_type) -> StateValue {
