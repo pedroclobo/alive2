@@ -449,12 +449,13 @@ encode_undef_refinement_per_elem(const Type &ty, const StateValue &sva,
   StateValue sva2{std::move(a2), expr()};
   StateValue svb{std::move(b), expr()}, svb2{std::move(b2), expr()};
   expr result = false;
+  bool is_byte = isByteVector(ty);
 
   for (unsigned i = 0; i < aty->numElementsConst(); ++i) {
     if (!aty->isPadding(i))
       result |= encode_undef_refinement_per_elem(aty->getChild(i),
-                  aty->extract(sva, i), aty->extract(sva2, i).value,
-                  aty->extract(svb, i).value, aty->extract(svb2, i).value);
+                  aty->extract(sva, i, false, is_byte), aty->extract(sva2, i, false, is_byte).value,
+                  aty->extract(svb, i, false, is_byte).value, aty->extract(svb2, i, false, is_byte).value);
   }
   return result;
 }
@@ -581,7 +582,7 @@ check_refinement(Errors &errs, const Transform &t, State &src_state,
       errs.add("Precondition is always false", false);
       return;
     }
-  
+
     vector<pair<expr, expr>> repls;
     auto vars_pre = pre_src.vars();
     for (auto &v : qvars) {

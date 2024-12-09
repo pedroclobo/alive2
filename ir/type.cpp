@@ -5,11 +5,13 @@
 #include "ir/globals.h"
 #include "ir/state.h"
 #include "smt/solver.h"
+#include "type.h"
 #include "util/compiler.h"
 #include <array>
 #include <cassert>
 #include <numeric>
 #include <sstream>
+#include <iostream>
 
 using namespace smt;
 using namespace util;
@@ -451,6 +453,10 @@ unsigned ByteType::bits() const {
   return Byte::bitsByte() * bitwidth / bits_byte;
 }
 
+unsigned ByteType::np_bits(bool fromInt) const {
+  return 0;
+}
+
 StateValue ByteType::getDummyValue(bool non_poison) const {
   return { expr::mkUInt(0, bits()), true };
 }
@@ -489,6 +495,22 @@ expr ByteType::enforceByteType(unsigned bits) const {
 
 const ByteType* ByteType::getAsByteType() const {
   return this;
+}
+
+expr ByteType::toBV(expr e) const {
+  return Type::toBV(std::move(e));
+}
+
+StateValue ByteType::toBV(StateValue v) const {
+  return v;
+}
+
+expr ByteType::fromBV(expr e) const {
+  return Type::fromBV(std::move(e));
+}
+
+StateValue ByteType::fromBV(StateValue v) const {
+  return v;
 }
 
 pair<expr, expr>
@@ -943,7 +965,7 @@ StateValue AggregateType::aggregateVals(const vector<StateValue> &vals) const {
 }
 
 StateValue AggregateType::extract(const StateValue &val, unsigned index,
-                                  bool fromInt) const {
+                                  bool fromInt, bool fromByte) const {
   unsigned total_value = 0, total_np = 0;
   for (unsigned i = 0; i < index; ++i) {
     total_value += children[i]->bits();
@@ -968,7 +990,7 @@ StateValue AggregateType::extract(const StateValue &val, unsigned index,
   }
 
   StateValue sv(val.value.extract(h_val, l_val),
-                val.non_poison.extract(h_np, l_np));
+                fromByte ? true : val.non_poison.extract(h_np, l_np));
   return fromInt ? children[index]->fromInt(std::move(sv)) :
                    children[index]->fromBV(std::move(sv));
 }
@@ -1109,9 +1131,10 @@ pair<expr, expr>
 AggregateType::refines(State &src_s, State &tgt_s, const StateValue &src,
                        const StateValue &tgt) const {
   set<expr> poison, value;
+  bool is_byte = isByteVector(*this);
   for (unsigned i = 0; i < elements; ++i) {
-    auto [p, v] = children[i]->refines(src_s, tgt_s, extract(src, i),
-                                       extract(tgt, i));
+    auto [p, v] = children[i]->refines(src_s, tgt_s, extract(src, i, false, is_byte),
+                                       extract(tgt, i, false, is_byte));
     poison.insert(std::move(p));
     value.insert(std::move(v));
   }
@@ -1260,6 +1283,7 @@ expr VectorType::getTypeConstraints() const {
   auto &elementTy = *children[0];
   expr r = AggregateType::getTypeConstraints() &&
            (elementTy.enforceIntType() ||
+            elementTy.enforceByteType() ||
             elementTy.enforceFloatType() ||
             elementTy.enforcePtrType()) &&
            numElements() != 0;
@@ -1639,6 +1663,11 @@ bool isNonPtrVector(const Type &t) {
   return vty && !vty->getChild(0).isPtrType();
 }
 
+bool isByteVector(const Type &t) {
+  auto vty = dynamic_cast<const VectorType *>(&t);
+  return vty && vty->getChild(0).isByteType();
+}
+
 unsigned minVectorElemSize(const Type &t) {
   if (auto agg = t.getAsAggregateType()) {
     if (t.isVectorType()) {
@@ -1657,11 +1686,14 @@ unsigned minVectorElemSize(const Type &t) {
   return 0;
 }
 
+// TODO: check this
 uint64_t getCommonAccessSize(const IR::Type &ty) {
   if (auto agg = ty.getAsAggregateType()) {
     // non-pointer vectors are stored/loaded all at once
     if (agg->isVectorType()) {
       auto &elemTy = agg->getChild(0);
+      if (!elemTy.isByteType())
+        return divide_up(agg->numElementsConst() * elemTy.bits(), Byte::bitsByte());
       if (!elemTy.isPtrType())
         return divide_up(agg->numElementsConst() * elemTy.bits(), 8);
     }
@@ -1676,7 +1708,7 @@ uint64_t getCommonAccessSize(const IR::Type &ty) {
   if (ty.isPtrType())
     return IR::bits_program_pointer / 8;
   if (ty.isByteType())
-    return divide_up(ty.bw(), 8);
+    return divide_up(ty.bits(), Byte::bitsByte());
   return divide_up(ty.bits(), 8);
 }
 }

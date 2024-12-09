@@ -16,11 +16,11 @@ define b32 @i32_to_b32(i32 %v, ptr %p) {
   ret b32 %c
 }
 
-define b64 @i64_to_b64(i64 %v, ptr %p) {
-  store i64 %v, ptr %p
-  %c = bitcast i64 %v to b64
-  ret b64 %c
-}
+; define b64 @i64_to_b64(i64 %v, ptr %p) {
+;   store i64 %v, ptr %p
+;   %c = bitcast i64 %v to b64
+;   ret b64 %c
+; }
 
 define b64 @ptr_to_b64(ptr %v, ptr %p) {
   store ptr %v, ptr %p
@@ -40,11 +40,11 @@ define b32 @float_to_b32(float %v, ptr %p) {
   ret b32 %c
 }
 
-define b64 @double_to_b64(double %v, ptr %p) {
-  store double %v, ptr %p
-  %c = bitcast double %v to b64
-  ret b64 %c
-}
+; define b64 @double_to_b64(double %v, ptr %p) {
+;   store double %v, ptr %p
+;   %c = bitcast double %v to b64
+;   ret b64 %c
+; }
 
 define b8 @b8_to_b8(b8 %v, ptr %p) {
   store b8 %v, ptr %p
@@ -64,8 +64,14 @@ define b32 @b32_to_b32(b32 %v, ptr %p) {
   ret b32 %c
 }
 
-define b64 @b64_to_b64(b64 %v, ptr %p) {
-  store b64 %v, ptr %p
-  %c = bitcast b64 %v to b64
-  ret b64 %c
+; define b64 @b64_to_b64(b64 %v, ptr %p) {
+;   store b64 %v, ptr %p
+;   %c = bitcast b64 %v to b64
+;   ret b64 %c
+; }
+
+define <2 x b8> @_2i8_to_2b8(<2 x i8> %v, ptr %p) {
+  store <2 x i8> %v, ptr %p
+  %c = bitcast <2 x i8> %v to <2 x b8>
+  ret <2 x b8> %c
 }

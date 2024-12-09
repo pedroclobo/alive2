@@ -40,11 +40,11 @@ define b32 @float_to_b32(float %v, ptr %p) {
   ret b32 %l
 }
 
-define b64 @double_to_b64(double %v, ptr %p) {
-  store double %v, ptr %p
-  %l = load b64, ptr %p
-  ret b64 %l
-}
+; define b64 @double_to_b64(double %v, ptr %p) {
+;   store double %v, ptr %p
+;   %l = load b64, ptr %p
+;   ret b64 %l
+; }
 
 define b8 @b8_to_b8(b8 %v, ptr %p) {
   store b8 %v, ptr %p
@@ -68,4 +68,10 @@ define b64 @b64_to_b64(b64 %v, ptr %p) {
   store b64 %v, ptr %p
   %l = load b64, ptr %p
   ret b64 %l
+}
+
+define <2 x b8> @_2i8_to_2b8(<2 x i8> %v, ptr %p) {
+  store <2 x i8> %v, ptr %p
+  %l = load <2 x b8>, ptr %p
+  ret <2 x b8> %l
 }

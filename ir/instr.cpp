@@ -8,6 +8,7 @@
 #include "smt/expr.h"
 #include "smt/exprs.h"
 #include "smt/solver.h"
+#include "type.h"
 #include "util/compiler.h"
 #include "util/config.h"
 #include <algorithm>
@@ -1652,21 +1653,40 @@ StateValue ConversionOp::toSMT(State &s) const {
       return {std::move(val_truncated), non_poison()};
     };
     break;
-  case BitCast:
+  case BitCast: {
     // NOP: ptr vect -> ptr vect
     if (getType().isVectorType() &&
         getType().getAsAggregateType()->getChild(0).isPtrType())
       return v;
 
-    if (getType().isByteType())
+    if (getType().isByteType() || isByteVector(getType()))
       return s.getMemory().bytesToValue(
-               s.getMemory().valueToBytes(v, val->getType(), s), getType());
+        s.getMemory().valueToBytes(std::move(v), val->getType(), s), getType());
 
     return getType().fromInt(val->getType().toInt(s, std::move(v)));
+  }
 
-  case ByteCast:
-    return
-      s.getMemory().bytecast(v, val->getType(), getType(), (flags & EXACT));
+  case ByteCast: {
+    auto scalar = [&](StateValue &&v, Type &from_type,
+                      const Type &to_type) -> StateValue {
+      return s.getMemory().bytecast(v, from_type, to_type, (flags & EXACT));
+    };
+
+    if (getType().isVectorType()) {
+      vector<StateValue> vals;
+      auto retty = getType().getAsAggregateType();
+      auto elems = retty->numElementsConst();
+      auto valty = val->getType().getAsAggregateType();
+
+      for (unsigned i = 0; i != elems; ++i)
+        vals.emplace_back(scalar(valty->extract(v, i), valty->getChild(i),
+                                 retty->getChild(i)));
+
+      return retty->aggregateVals(vals);
+    }
+
+    return scalar(std::move(v), val->getType(), getType());
+  }
 
   case Ptr2Int:
     fn = [&](auto &&val, auto &to_type) -> StateValue {
@@ -1724,19 +1744,20 @@ expr ConversionOp::getTypeConstraints(const Function &f) const {
         // byte -> ptr
         (getType().enforceByteOrVectorType() &&
           val->getType().enforcePtrOrVectorType() &&
-          getType().sizeVar() == bits_program_pointer) ||
+          getType().scalarSize() == bits_program_pointer) ||
         // byte -> byte
         (getType().enforceByteOrVectorType() ==
           val->getType().enforceByteOrVectorType() &&
           getType().sizeVar() == val->getType().sizeVar()));
     break;
-  case ByteCast:
+  case ByteCast: {
     c = getType().enforceIntOrFloatOrPtrOrVectorType() &&
         val->getType().enforceByteOrVectorType() &&
         expr::mkIf(getType().enforcePtrOrVectorType(),
                    val->getType().scalarSize().uge(bits_program_pointer),
                    val->getType().scalarSize().uge(getType().scalarSize()));
     break;
+  }
   case Ptr2Int:
     c = getType().enforceIntOrVectorType() &&
         val->getType().enforcePtrOrVectorType();
@@ -3332,7 +3353,8 @@ check_ret_attributes(State &s, StateValue &&sv, const StateValue &returned_arg,
     for (unsigned i = 0, e = agg->numElementsConst(); i != e; ++i) {
       if (agg->isPadding(i))
         continue;
-      vals.emplace_back(check_ret_attributes(s, agg->extract(sv, i),
+      bool is_byte = agg->getChild(i).isByteType();
+      vals.emplace_back(check_ret_attributes(s, agg->extract(sv, i, false, is_byte),
                                              agg->extract(returned_arg, i),
                                              agg->getChild(i), attrs, args));
     }

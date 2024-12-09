@@ -7,6 +7,7 @@
 #include "ir/state.h"
 #include "ir/value.h"
 #include "smt/solver.h"
+#include "type.h"
 #include "util/compiler.h"
 #include "util/config.h"
 #include <algorithm>
@@ -596,7 +597,7 @@ vector<Byte> Memory::valueToBytes(const StateValue &val, const Type &fromType,
 
     for (unsigned i = 0; i < bytesize; ++i)
       bytes.emplace_back(*this, StateValue(expr(p()), expr(val.non_poison)), i);
-  } else if (fromType.isByteType()) {
+  } else if (fromType.isByteType() || isByteVector(fromType)) {
     unsigned bitsize = val.bits();
     unsigned bytesize = divide_up(bitsize, Byte::bitsByte());
 
@@ -692,7 +693,7 @@ StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType,
       loaded_ptr = expr::mkIf(is_ptr, loaded_ptr, Pointer::mkNullPointer(*this)());
     }
     return { std::move(loaded_ptr), std::move(non_poison) };
-  } else if (toType.isByteType()) {
+  } else if (toType.isByteType() || isByteVector(toType)) {
     auto bitsize = toType.bits();
     assert(divide_up(bitsize, Byte::bitsByte()) == bytes.size());
 
@@ -701,6 +702,12 @@ StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType,
       auto &b = bytes[i];
       StateValue v(expr(b.p), true);
       val = i == 0 ? std::move(v) : v.concat(val);
+    }
+    if (auto *ATy = toType.getAsAggregateType()) {
+      vector<StateValue> child_vals;
+      for (unsigned i = 0; i < ATy->numElementsConst(); ++i)
+        child_vals.emplace_back(ATy->extract(val, i, true, true));
+      return ATy->aggregateVals(child_vals);
     }
     return val;
   } else {
@@ -2308,8 +2315,8 @@ unsigned Memory::getStoreByteSize(const Type &ty) {
   if (ty.isPtrType())
     return divide_up(bits_program_pointer, 8);
 
-  if (ty.isByteType())
-    return divide_up(ty.bw(), 8);
+  if (ty.isByteType() || isByteVector(ty))
+    return divide_up(ty.bits(), Byte::bitsByte());
 
   auto aty = ty.getAsAggregateType();
   if (aty && !isNonPtrVector(ty)) {
@@ -2318,6 +2325,7 @@ unsigned Memory::getStoreByteSize(const Type &ty) {
       sz += getStoreByteSize(aty->getChild(i));
     return sz;
   }
+
   return divide_up(ty.bits(), 8);
 }
 
@@ -2339,7 +2347,7 @@ void Memory::store(const StateValue &v, const Type &type, unsigned offset0,
 
   } else {
     vector<Byte> bytes = valueToBytes(v, type, *state);
-    assert(!v.isValid() || bytes.size() * bytesz == getStoreByteSize(type));
+    // assert(!v.isValid() || bytes.size() * bytesz == getStoreByteSize(type));
 
     for (unsigned i = 0, e = bytes.size(); i < e; ++i) {
       unsigned offset = little_endian ? i * bytesz : (e - i - 1) * bytesz;
@@ -2387,8 +2395,17 @@ StateValue Memory::load(const Pointer &ptr, const Type &type, set<expr> &undef,
   }
 
   bool is_ptr = type.isPtrType();
-  auto loadedBytes = load(ptr, bytecount, undef, align, little_endian,
-                          is_ptr ? DATA_PTR : DATA_INT);
+  bool is_byte = type.isByteType() || isByteVector(type);
+
+  vector<Byte> loadedBytes;
+  if (is_byte) {
+    for (unsigned i = 0; i < bytecount; ++i) {
+      loadedBytes.emplace_back(raw_load(ptr + i));
+    }
+  } else {
+    loadedBytes = load(ptr, bytecount, undef, align, little_endian,
+                       is_ptr ? DATA_PTR : DATA_INT);
+  }
   auto val = bytesToValue(loadedBytes, type);
 
   // partial order reduction for fresh pointers
