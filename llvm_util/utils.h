@@ -41,8 +41,8 @@ std::string value_name(const llvm::Value &v);
 IR::Type& get_int_type(unsigned bits);
 IR::Type* llvm_type2alive(const llvm::Type *ty);
 
-IR::Value* make_intconst(uint64_t val, int bits);
-IR::Value* make_intconst(const llvm::APInt &val);
+IR::Value* make_intconst(uint64_t val, int bits, bool isByte=false);
+IR::Value* make_intconst(const llvm::APInt &val, bool isByte=false);
 IR::Value* get_poison(IR::Type &ty);
 IR::Value* get_operand(llvm::Value *v,
   std::function<IR::Value*(llvm::ConstantExpr *)> constexpr_conv,

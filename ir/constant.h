@@ -21,6 +21,7 @@ public:
 
 class IntConst final : public Constant {
   std::variant<int64_t, std::string> val;
+  bool isByte;
 
 public:
   IntConst(Type &type, int64_t val);
