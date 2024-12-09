@@ -1233,6 +1233,7 @@ expr VectorType::getTypeConstraints() const {
   auto &elementTy = *children[0];
   expr r = AggregateType::getTypeConstraints() &&
            (elementTy.enforceIntType() ||
+            elementTy.enforceByteType() ||
             elementTy.enforceFloatType() ||
             elementTy.enforcePtrType()) &&
            numElements() != 0;
@@ -1610,6 +1611,11 @@ bool hasByte(const Type &t) {
 bool isNonPtrVector(const Type &t) {
   auto vty = dynamic_cast<const VectorType *>(&t);
   return vty && !vty->getChild(0).isPtrType();
+}
+
+bool isByteVector(const Type &t) {
+  auto vty = dynamic_cast<const VectorType *>(&t);
+  return vty && vty->getChild(0).isByteType();
 }
 
 unsigned minVectorElemSize(const Type &t) {
