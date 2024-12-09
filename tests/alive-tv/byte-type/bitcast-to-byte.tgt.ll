@@ -79,3 +79,63 @@ define b32 @i32_const_to_b32() {
   %1 = bitcast i32 4294967295 to b32
   ret b32 %1
 }
+
+define <2 x b32> @_2i32_to_2b32(<2 x i32> %v, ptr %p) {
+  store <2 x i32> %v, ptr %p
+  %c = bitcast <2 x i32> %v to <2 x b32>
+  ret <2 x b32> %c
+}
+
+define <2 x b32> @i64_to_b32_vec(i64 %v, ptr %p) {
+  store i64 %v, ptr %p
+  %c = bitcast i64 %v to <2 x b32>
+  ret <2 x b32> %c
+}
+
+define b64 @i32_vec_to_b64(<2 x i32> %v, ptr %p) {
+  store <2 x i32> %v, ptr %p
+  %c = bitcast <2 x i32> %v to b64
+  ret b64 %c
+}
+
+define <2 x b32> @_2float_to_2b32(<2 x float> %v, ptr %p) {
+  store <2 x float> %v, ptr %p
+  %c = bitcast <2 x float> %v to <2 x b32>
+  ret <2 x b32> %c
+}
+
+define <2 x b32> @double_to_b32_vec(double %v, ptr %p) {
+  store double %v, ptr %p
+  %c = bitcast double %v to <2 x b32>
+  ret <2 x b32> %c
+}
+
+define b64 @float_vec_to_b64(<2 x float> %v, ptr %p) {
+  store <2 x float> %v, ptr %p
+  %c = bitcast <2 x float> %v to b64
+  ret b64 %c
+}
+
+define <2 x b32> @_2b32_to_2b32(<2 x b32> %v, ptr %p) {
+  store <2 x b32> %v, ptr %p
+  %c = bitcast <2 x b32> %v to <2 x b32>
+  ret <2 x b32> %c
+}
+
+define <2 x b32> @b64_to_b32_vec(b64 %v, ptr %p) {
+  store b64 %v, ptr %p
+  %c = bitcast b64 %v to <2 x b32>
+  ret <2 x b32> %c
+}
+
+define b64 @b32_vec_to_b64(<2 x b32> %v, ptr %p) {
+  store <2 x b32> %v, ptr %p
+  %c = bitcast <2 x b32> %v to b64
+  ret b64 %c
+}
+
+define <2 x b64> @_2ptr_to_2b64(<2 x ptr> %v, ptr %p) {
+  store <2 x ptr> %v, ptr %p
+  %c = bitcast <2 x ptr> %v to <2 x b64>
+  ret <2 x b64> %c
+}
