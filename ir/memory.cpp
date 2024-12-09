@@ -7,6 +7,7 @@
 #include "ir/state.h"
 #include "ir/value.h"
 #include "smt/solver.h"
+#include "type.h"
 #include "util/compiler.h"
 #include "util/config.h"
 #include <algorithm>
@@ -691,7 +692,7 @@ StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType) {
       loaded_ptr = expr::mkIf(is_ptr, loaded_ptr, Pointer::mkNullPointer(*this)());
     }
     return { std::move(loaded_ptr), std::move(non_poison) };
-  } else if (toType.isByteType()) {
+  } else if (toType.isByteType() || isByteVector(toType)) {
     auto bitsize = toType.bits();
     assert(divide_up(bitsize, Byte::bitsByte()) == bytes.size());
 
@@ -2308,12 +2309,13 @@ unsigned Memory::getStoreByteSize(const Type &ty) {
     return divide_up(ty.bits(), Byte::bitsByte());
 
   auto aty = ty.getAsAggregateType();
-  if (aty && !isNonPtrVector(ty)) {
+  if (aty && (!isNonPtrVector(ty) || isByteVector(ty))) {
     unsigned sz = 0;
     for (unsigned i = 0, e = aty->numElementsConst(); i < e; ++i)
       sz += getStoreByteSize(aty->getChild(i));
     return sz;
   }
+
   return divide_up(ty.bits(), 8);
 }
 
@@ -2363,7 +2365,7 @@ StateValue Memory::load(const Pointer &ptr, const Type &type, set<expr> &undef,
   unsigned bytecount = getStoreByteSize(type);
 
   auto aty = type.getAsAggregateType();
-  if (aty && !isNonPtrVector(type)) {
+  if (aty && (!isNonPtrVector(type) || isByteVector(type))) {
     vector<StateValue> member_vals;
     unsigned byteofs = 0;
     for (unsigned i = 0, e = aty->numElementsConst(); i < e; ++i) {
