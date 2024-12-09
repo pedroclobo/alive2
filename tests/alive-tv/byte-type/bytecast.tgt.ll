@@ -18,6 +18,11 @@ define i64 @b64_to_i64(ptr %p) {
   ret i64 %v
 }
 
+define <2 x i32> @to_int_vec(ptr %p) {
+  %v = load <2 x i32>, ptr %p
+  ret <2 x i32> %v
+}
+
 define ptr @b64_to_ptr(ptr align 8 %p) {
   %v = load ptr, ptr %p
   ret ptr %v

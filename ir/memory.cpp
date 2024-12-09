@@ -593,19 +593,30 @@ namespace IR {
 vector<Byte> Memory::valueToBytes(const StateValue &val, const Type &fromType,
                                   State &s) {
   vector<Byte> bytes;
-  if (fromType.isPtrType()) {
-    Pointer p(*this, val.value);
-    unsigned bytesize = bits_program_pointer / bits_byte;
+  if (fromType.isPtrType() ||
+     (fromType.isAggregateType() &&
+      fromType.getAsAggregateType()->getChild(0).isPtrType())) {
+    auto scalar = [&](const StateValue &v) {
+      Pointer p(*this, v.value);
+      unsigned bytesize = bits_program_pointer / bits_byte;
 
-    // constant global can't store pointers that alias with local blocks
-    if (s.isInitializationPhase() && !p.isLocal().isFalse()) {
-      expr bid  = expr::mkUInt(0, 1).concat(p.getShortBid());
-      p = Pointer(*this, bid, p.getOffset(), p.getAttrs());
-    }
+      // constant global can't store pointers that alias with local blocks
+      if (s.isInitializationPhase() && !p.isLocal().isFalse()) {
+        expr bid  = expr::mkUInt(0, 1).concat(p.getShortBid());
+        p = Pointer(*this, bid, p.getOffset(), p.getAttrs());
+      }
 
-    for (unsigned i = 0; i < bytesize; ++i)
-      bytes.emplace_back(*this, StateValue(expr(p()), expr(val.non_poison)), i);
-  } else if (fromType.isByteType()) {
+      for (unsigned i = 0; i < bytesize; ++i)
+        bytes.emplace_back(*this, StateValue(expr(p()), expr(v.non_poison)), i);
+    };
+
+    if (auto *ATy = fromType.getAsAggregateType())
+      for (unsigned i = 0, els = ATy->numElementsConst(); i < els; ++i)
+        scalar(ATy->extract(val, i));
+    else
+      scalar(val);
+
+  } else if (fromType.isByteType() || isByteVector(fromType)) {
     unsigned bitsize = val.bits();
     unsigned bytesize = divide_up(bitsize, Byte::bitsByte());
 
@@ -656,7 +667,26 @@ StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType,
 
   bool is_asm = isAsmMode() || punning;
 
-  if (toType.isPtrType()) {
+  if (toType.isAggregateType() &&
+      toType.getAsAggregateType()->getChild(0).isPtrType()) {
+    auto aty = toType.getAsAggregateType();
+    assert(bytes.size() == aty->numElementsConst() * bits_program_pointer / bits_byte);
+    vector<StateValue> member_vals;
+
+    vector<Byte> sliced_bytes;
+    for (unsigned i = 0, e = aty->numElementsConst(); i < e; ++i) {
+      auto start = i * bits_program_pointer / bits_byte;
+      auto end = start + bits_program_pointer / bits_byte;
+
+      sliced_bytes.clear();
+      for (auto it = bytes.begin() + start; it != bytes.begin() + end; ++it)
+        sliced_bytes.push_back(std::move(*it));
+
+      member_vals.push_back(bytesToValue(sliced_bytes, aty->getChild(i), punning));
+    }
+
+    return aty->aggregateVals(member_vals);
+  } else if (toType.isPtrType()) {
     assert(bytes.size() == bits_program_pointer / bits_byte);
     expr loaded_ptr, is_ptr;
     // The result is not poison if all of these hold:
@@ -701,7 +731,7 @@ StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType,
       loaded_ptr = expr::mkIf(is_ptr, loaded_ptr, Pointer::mkNullPointer(*this)());
     }
     return { std::move(loaded_ptr), std::move(non_poison) };
-  } else if (toType.isByteType()) {
+  } else if (toType.isByteType() || isByteVector(toType)) {
     auto bitsize = toType.bits();
     assert(divide_up(bitsize, Byte::bitsByte()) == bytes.size());
 
@@ -710,6 +740,12 @@ StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType,
       auto &b = bytes[i];
       StateValue v(expr(b.p), true);
       val = i == 0 ? std::move(v) : v.concat(val);
+    }
+    if (auto *ATy = toType.getAsAggregateType()) {
+      vector<StateValue> child_vals;
+      for (unsigned i = 0; i < ATy->numElementsConst(); ++i)
+        child_vals.emplace_back(ATy->extract(val, i, true));
+      return ATy->aggregateVals(child_vals);
     }
     return val;
   } else {
@@ -2302,12 +2338,13 @@ unsigned Memory::getStoreByteSize(const Type &ty) {
     return divide_up(ty.bw(), 8);
 
   auto aty = ty.getAsAggregateType();
-  if (aty && !isNonPtrVector(ty)) {
+  if (aty && (!isNonPtrVector(ty) || isByteVector(ty))) {
     unsigned sz = 0;
     for (unsigned i = 0, e = aty->numElementsConst(); i < e; ++i)
       sz += getStoreByteSize(aty->getChild(i));
     return sz;
   }
+
   return divide_up(ty.bits(), 8);
 }
 
@@ -2602,7 +2639,6 @@ expr Memory::int2ptr(const expr &val) {
 
 StateValue Memory::bytecast(StateValue &val, Type &from_type,
                             const Type &to_type, bool exact) {
-  assert(!from_type.isAggregateType() && !to_type.isAggregateType());
   return bytesToValue(valueToBytes(val, from_type, *state), to_type, !exact);
 }
 

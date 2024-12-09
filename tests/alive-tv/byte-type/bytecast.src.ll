@@ -22,10 +22,22 @@ define i64 @b64_to_i64(ptr %p) {
   ret i64 %c
 }
 
+define <2 x i32> @to_int_vec(ptr %p) {
+  %v = load <2 x b32>, ptr %p
+  %c = bytecast exact <2 x b32> %v to <2 x i32>
+  ret <2 x i32> %c
+}
+
 define ptr @b64_to_ptr(ptr align 8 %p) {
   %v = load b64, ptr %p
   %c = bytecast exact b64 %v to ptr
   ret ptr %c
+}
+
+define <2 x ptr> @to_ptr_vec(ptr %p) {
+  %v = load <2 x b64>, ptr %p
+  %c = bytecast exact <2 x b64> %v to <2 x ptr>
+  ret <2 x ptr> %c
 }
 
 define half @b16_to_half(ptr %p) {
@@ -65,7 +77,7 @@ define <2 x ptr> @_4b32_to_2ptr(ptr %p) {
 }
 
 define <2 x i32> @b64_to_2i32(ptr %p) {
-  %v = load b64, ptr %p
+  %v = load b64, ptr %p, align 8
   %c = bytecast exact b64 %v to <2 x i32>
   ret <2 x i32> %c
 }

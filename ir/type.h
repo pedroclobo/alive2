@@ -480,6 +480,7 @@ public:
 bool hasPtr(const Type &t);
 bool hasByte(const Type &t);
 bool isNonPtrVector(const Type &t);
+bool isByteVector(const Type &t);
 unsigned minVectorElemSize(const Type &t);
 uint64_t getCommonAccessSize(const Type &ty);
 }

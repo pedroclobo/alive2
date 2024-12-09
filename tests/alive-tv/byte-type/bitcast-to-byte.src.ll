@@ -77,3 +77,63 @@ define b8 @i8_const_to_b8() {
 define b32 @i32_const_to_b32() {
   ret b32 255
 }
+
+define <2 x b32> @_2i32_to_2b32(<2 x i32> %v, ptr %p) {
+  store <2 x i32> %v, ptr %p
+  %l = load <2 x b32>, ptr %p
+  ret <2 x b32> %l
+}
+
+define <2 x b32> @i64_to_b32_vec(i64 %v, ptr %p) {
+  store i64 %v, ptr %p
+  %l = load <2 x b32>, ptr %p
+  ret <2 x b32> %l
+}
+
+define b64 @i32_vec_to_b64(<2 x i32> %v, ptr %p) {
+  store <2 x i32> %v, ptr %p
+  %l = load b64, ptr %p
+  ret b64 %l
+}
+
+define <2 x b32> @_2float_to_2b32(<2 x float> %v, ptr %p) {
+  store <2 x float> %v, ptr %p
+  %l = load <2 x b32>, ptr %p
+  ret <2 x b32> %l
+}
+
+define <2 x b32> @double_to_b32_vec(double %v, ptr %p) {
+  store double %v, ptr %p
+  %l = load <2 x b32>, ptr %p
+  ret <2 x b32> %l
+}
+
+define b64 @float_vec_to_b64(<2 x float> %v, ptr %p) {
+  store <2 x float> %v, ptr %p
+  %l = load b64, ptr %p
+  ret b64 %l
+}
+
+define <2 x b32> @_2b32_to_2b32(<2 x b32> %v, ptr %p) {
+  store <2 x b32> %v, ptr %p
+  %l = load <2 x b32>, ptr %p
+  ret <2 x b32> %l
+}
+
+define <2 x b32> @b64_to_b32_vec(b64 %v, ptr %p) {
+  store b64 %v, ptr %p
+  %l = load <2 x b32>, ptr %p
+  ret <2 x b32> %l
+}
+
+define b64 @b32_vec_to_b64(<2 x b32> %v, ptr %p) {
+  store <2 x b32> %v, ptr %p
+  %l = load b64, ptr %p
+  ret b64 %l
+}
+
+define <2 x b64> @_2ptr_to_2b64(<2 x ptr> %v, ptr %p) {
+  store <2 x ptr> %v, ptr %p
+  %l = load <2 x b64>, ptr %p
+  ret <2 x b64> %l
+}

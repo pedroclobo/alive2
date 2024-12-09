@@ -1753,21 +1753,23 @@ StateValue ConversionOp::toSMT(State &s) const {
       return {std::move(val_truncated), non_poison()};
     };
     break;
-  case BitCast:
+  case BitCast: {
     // NOP: ptr vect -> ptr vect
     if (getType().isVectorType() &&
         getType().getAsAggregateType()->getChild(0).isPtrType())
       return v;
 
-    if (getType().isByteType())
-      return s.getMemory().bytesToValue(
-               s.getMemory().valueToBytes(v, val->getType(), s), getType());
+    if (getType().isByteType() || isByteVector(getType()))
+      return
+        s.getMemory().bytesToValue(
+          s.getMemory().valueToBytes(
+            std::move(v), val->getType(), s), getType());
 
     return getType().fromInt(val->getType().toInt(s, std::move(v)));
+  }
 
   case ByteCast:
-    return
-      s.getMemory().bytecast(v, val->getType(), getType(), (flags & EXACT));
+    return s.getMemory().bytecast(v, val->getType(), getType(), (flags & EXACT));
 
   case Ptr2Int:
     fn = [&](auto &&val, auto &to_type) -> StateValue {
@@ -1823,20 +1825,23 @@ expr ConversionOp::getTypeConstraints(const Function &f) const {
     break;
   case BitCast:
     c = getType().enforceIntOrByteOrFloatOrPtrOrVectorType() &&
-        val->getType().enforceIntOrFloatOrPtrOrVectorType() &&
+        val->getType().enforceIntOrByteOrFloatOrPtrOrVectorType() &&
+        // ptr -> ptr
         ((getType().enforcePtrOrVectorType() ==
           val->getType().enforcePtrOrVectorType() &&
           getType().sizeVar() == val->getType().sizeVar()) ||
+        // byte -> ptr
         (getType().enforceByteOrVectorType() &&
           val->getType().enforcePtrOrVectorType() &&
-          getType().sizeVar() == bits_program_pointer));
+          getType().scalarSize() == bits_program_pointer) ||
+        // byte -> byte
+        (getType().enforceByteOrVectorType() ==
+          val->getType().enforceByteOrVectorType() &&
+          getType().sizeVar() == val->getType().sizeVar()));
     break;
   case ByteCast:
     c = getType().enforceIntOrFloatOrPtrOrVectorType() &&
-        val->getType().enforceByteOrVectorType() &&
-        expr::mkIf(getType().enforcePtrOrVectorType(),
-                   val->getType().scalarSize().uge(bits_program_pointer),
-                   val->getType().scalarSize().uge(getType().scalarSize()));
+        val->getType().enforceByteOrVectorType();
     break;
   case Ptr2Int:
   case Ptr2Addr:
@@ -1850,7 +1855,7 @@ expr ConversionOp::getTypeConstraints(const Function &f) const {
   }
 
   c &= Value::getTypeConstraints();
-  if (op != BitCast)
+  if (op != BitCast && op != ByteCast)
     c &= getType().enforceVectorTypeEquiv(val->getType());
   return c;
 }
