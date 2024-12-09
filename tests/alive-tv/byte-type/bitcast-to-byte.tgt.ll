@@ -69,3 +69,13 @@ define b64 @b64_to_b64(b64 %v, ptr %p) {
   %c = bitcast b64 %v to b64
   ret b64 %c
 }
+
+define b8 @i8_const_to_b8() {
+  %1 = bitcast i8 255 to b8
+  ret b8 %1
+}
+
+define b32 @i32_const_to_b32() {
+  %1 = bitcast i32 4294967295 to b32
+  ret b32 %1
+}

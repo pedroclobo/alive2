@@ -69,3 +69,11 @@ define b64 @b64_to_b64(b64 %v, ptr %p) {
   %l = load b64, ptr %p
   ret b64 %l
 }
+
+define b8 @i8_const_to_b8() {
+  ret b8 255
+}
+
+define b32 @i32_const_to_b32() {
+  ret b32 255
+}
