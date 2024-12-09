@@ -1233,6 +1233,7 @@ expr VectorType::getTypeConstraints() const {
   auto &elementTy = *children[0];
   expr r = AggregateType::getTypeConstraints() &&
            (elementTy.enforceIntType() ||
+            elementTy.enforceByteType() ||
             elementTy.enforceFloatType() ||
             elementTy.enforcePtrType()) &&
            numElements() != 0;

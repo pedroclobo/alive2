@@ -681,7 +681,7 @@ StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType) {
       loaded_ptr = expr::mkIf(is_ptr, loaded_ptr, Pointer::mkNullPointer(*this)());
     }
     return { std::move(loaded_ptr), std::move(non_poison) };
-  } else if (toType.isByteType()) {
+  } else if (toType.isByteType() || (toType.isVectorType() && toType.getAsAggregateType()->getChild(0).isByteType())) {
     auto bitsize = toType.bits();
     assert(divide_up(bitsize, Byte::bitsByte()) == bytes.size());
 
@@ -2186,6 +2186,10 @@ unsigned Memory::getStoreByteSize(const Type &ty) {
       sz += getStoreByteSize(aty->getChild(i));
     return sz;
   }
+
+  if (aty && aty->getChild(0).isByteType())
+    return divide_up(ty.bits(), Byte::bitsByte());
+
   return divide_up(ty.bits(), 8);
 }
 
@@ -2235,7 +2239,7 @@ StateValue Memory::load(const Pointer &ptr, const Type &type, set<expr> &undef,
   unsigned bytecount = getStoreByteSize(type);
 
   auto aty = type.getAsAggregateType();
-  if (aty && !isNonPtrVector(type)) {
+  if (aty && (!isNonPtrVector(type) || aty->getChild(0).isByteType())) {
     vector<StateValue> member_vals;
     unsigned byteofs = 0;
     for (unsigned i = 0, e = aty->numElementsConst(); i < e; ++i) {
