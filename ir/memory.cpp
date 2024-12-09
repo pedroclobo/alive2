@@ -7,6 +7,7 @@
 #include "ir/state.h"
 #include "ir/value.h"
 #include "smt/solver.h"
+#include "type.h"
 #include "util/compiler.h"
 #include "util/config.h"
 #include <algorithm>
@@ -596,7 +597,7 @@ vector<Byte> Memory::valueToBytes(const StateValue &val, const Type &fromType,
 
     for (unsigned i = 0; i < bytesize; ++i)
       bytes.emplace_back(*this, StateValue(expr(p()), expr(val.non_poison)), i);
-  } else if (fromType.isByteType()) {
+  } else if (fromType.isByteType() || isByteVector(fromType)) {
     unsigned bitsize = val.bits();
     unsigned bytesize = divide_up(bitsize, Byte::bitsByte());
 
@@ -692,7 +693,7 @@ StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType,
       loaded_ptr = expr::mkIf(is_ptr, loaded_ptr, Pointer::mkNullPointer(*this)());
     }
     return { std::move(loaded_ptr), std::move(non_poison) };
-  } else if (toType.isByteType()) {
+  } else if (toType.isByteType() || isByteVector(toType)) {
     auto bitsize = toType.bits();
     assert(divide_up(bitsize, Byte::bitsByte()) == bytes.size());
 
@@ -701,6 +702,12 @@ StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType,
       auto &b = bytes[i];
       StateValue v(expr(b.p), true);
       val = i == 0 ? std::move(v) : v.concat(val);
+    }
+    if (auto *ATy = toType.getAsAggregateType()) {
+      vector<StateValue> child_vals;
+      for (unsigned i = 0; i < ATy->numElementsConst(); ++i)
+        child_vals.emplace_back(ATy->extract(val, i, true));
+      return ATy->aggregateVals(child_vals);
     }
     return val;
   } else {
@@ -2312,12 +2319,13 @@ unsigned Memory::getStoreByteSize(const Type &ty) {
     return divide_up(ty.bw(), 8);
 
   auto aty = ty.getAsAggregateType();
-  if (aty && !isNonPtrVector(ty)) {
+  if (aty && (!isNonPtrVector(ty) || isByteVector(ty))) {
     unsigned sz = 0;
     for (unsigned i = 0, e = aty->numElementsConst(); i < e; ++i)
       sz += getStoreByteSize(aty->getChild(i));
     return sz;
   }
+
   return divide_up(ty.bits(), 8);
 }
 
@@ -2367,7 +2375,7 @@ StateValue Memory::load(const Pointer &ptr, const Type &type, set<expr> &undef,
   unsigned bytecount = getStoreByteSize(type);
 
   auto aty = type.getAsAggregateType();
-  if (aty && !isNonPtrVector(type)) {
+  if (aty && (!isNonPtrVector(type) || isByteVector(type))) {
     vector<StateValue> member_vals;
     unsigned byteofs = 0;
     for (unsigned i = 0, e = aty->numElementsConst(); i < e; ++i) {
