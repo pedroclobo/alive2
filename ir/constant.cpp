@@ -24,10 +24,11 @@ void Constant::print(ostream &os) const {
 
 
 IntConst::IntConst(Type &type, int64_t val)
-  : Constant(type, to_string(val)), val(val) {}
+  : Constant(type, to_string(val)), val(val), isByte(type.isByteType()) {}
 
 IntConst::IntConst(Type &type, string &&val)
-  : Constant(type, string(val)), val(std::move(val)) {}
+  : Constant(type, string(val)), val(std::move(val)),
+                                 isByte(type.isByteType()) {}
 
 StateValue IntConst::toSMT(State &s) const {
   if (auto v = get_if<int64_t>(&val))
@@ -41,7 +42,9 @@ expr IntConst::getTypeConstraints() const {
     min_bits = (*v >= 0 ? 63 : 64) - num_sign_bits(*v);
 
   return Value::getTypeConstraints() &&
-         getType().enforceIntType() &&
+         expr::mkIf(isByte,
+                    getType().enforceByteType(),
+                    getType().enforceIntType()) &&
          getType().sizeVar().uge(min_bits);
 }
 
