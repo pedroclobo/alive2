@@ -21,3 +21,9 @@ define b64 @f4(b64 %b) {
   %2 = bitcast i64 %1 to b64
   ret b64 %2
 }
+
+define b8 @f5() {
+  %1 = bytecast b8 2 to i8
+  %2 = bitcast i8 %1 to b8
+  ret b8 %2
+}
