@@ -27,3 +27,9 @@ define b8 @f5() {
   %2 = bitcast i8 %1 to b8
   ret b8 %2
 }
+
+define b64 @f6(b64 %b) {
+  %1 = bytecast b64 %b to ptr
+  %2 = bitcast ptr %1 to b64
+  ret b64 %2
+}

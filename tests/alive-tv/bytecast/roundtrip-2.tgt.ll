@@ -13,3 +13,7 @@ define i32 @f3(i32 %b) {
 define i64 @f4(i64 %b) {
   ret i64 %b
 }
+
+define ptr @f5(ptr %b) {
+  ret ptr %b
+}

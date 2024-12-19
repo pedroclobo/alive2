@@ -765,6 +765,13 @@ static bool has_nullptr(const Value *v) {
   return false;
 }
 
+static unsigned num_bytes(const Type &ty) {
+  unsigned n = ty.isByteType();
+  if (auto aty = ty.getAsAggregateType())
+    n += aty->numByteElements();
+  return n;
+}
+
 static unsigned num_ptrs(const Type &ty) {
   unsigned n = ty.isPtrType();
   if (auto aty = ty.getAsAggregateType())
@@ -996,7 +1003,7 @@ static void calculateAndInitConstants(Transform &t) {
   num_ptrinputs = 0;
   unsigned num_null_ptrinputs = 0;
   for (auto &arg : t.src.getInputs()) {
-    auto n = num_ptrs(arg.getType());
+    auto n = num_ptrs(arg.getType()) + num_bytes(arg.getType());
     auto in = dynamic_cast<const Input*>(&arg);
     if (in && in->hasAttribute(ParamAttrs::ByVal)) {
       num_globals_src += n;

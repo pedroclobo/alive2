@@ -1127,6 +1127,17 @@ unsigned AggregateType::numPointerElements() const {
   return count;
 }
 
+unsigned AggregateType::numByteElements() const {
+  unsigned count = 0;
+  for (unsigned i = 0; i < elements; ++i) {
+    if (children[i]->isByteType())
+      count++;
+    else if (auto aty = children[i]->getAsAggregateType())
+      count += aty->numByteElements();
+  }
+  return count;
+}
+
 void AggregateType::printVal(ostream &os, const State &s, const expr &e) const {
   UNREACHABLE();
 }
