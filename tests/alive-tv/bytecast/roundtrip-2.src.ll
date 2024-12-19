@@ -21,3 +21,9 @@ define i64 @f4(i64 %b) {
   %2 = bytecast b64 %1 to i64
   ret i64 %2
 }
+
+define ptr @f5(ptr %b) {
+  %1 = bitcast ptr %b to b64
+  %2 = bytecast b64 %1 to ptr
+  ret ptr %2
+}

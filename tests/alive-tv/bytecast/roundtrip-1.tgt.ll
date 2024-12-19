@@ -17,3 +17,7 @@ define b64 @f4(b64 %b) {
 define b8 @f5() {
   ret b8 2
 }
+
+define b64 @f6(b64 %b) {
+  ret b64 %b
+}
