@@ -405,12 +405,12 @@ expr Byte::refined(const Byte &other) const {
   expr is_ptr = isPtr();
   expr is_ptr2 = other.isPtr();
 
-  // allow int -> ptr type punning in asm mode
+  // allow int -> ptr type punning
   // this is only need to support removal of 'store int undef'
   expr v1 = nonptrValue();
-  expr v2 = asm_mode ? other.forceCastToInt() : other.nonptrValue();
+  expr v2 = other.forceCastToInt();
   expr np1 = nonptrNonpoison();
-  expr np2 = asm_mode ? other.nonPoison() : other.nonptrNonpoison();
+  expr np2 = other.nonPoison();
 
   // int byte
   expr int_cnstr = true;
@@ -442,13 +442,10 @@ expr Byte::refined(const Byte &other) const {
   if (!does_ptr_store || is_ptr.isFalse() || (!asm_mode && is_ptr2.isFalse())) {
     ptr_cnstr = *this == other;
   } else {
-    // allow ptr -> int type punning in asm mode
-    expr extra = false;
-    if (asm_mode) {
-      extra = !is_ptr2 &&
-              other.boolNonptrNonpoison() &&
-              castPtrToInt() == other.nonptrValue();
-    }
+    // allow ptr -> int type punning
+    expr extra = !is_ptr2 &&
+                 other.boolNonptrNonpoison() &&
+                 castPtrToInt() == other.nonptrValue();
     ptr_cnstr = ptrNonpoison().implies(
                   (other.ptrNonpoison() &&
                    ptrByteoffset() == other.ptrByteoffset() &&
@@ -457,7 +454,7 @@ expr Byte::refined(const Byte &other) const {
   }
 
   expr constr = expr::mkIf(is_ptr, ptr_cnstr, int_cnstr);
-  if (asm_mode)
+  if (true || asm_mode)
     return constr;
 
   return expr::mkIf(is_ptr == is_ptr2,
@@ -690,7 +687,7 @@ static StateValue bytesToValue(const Memory &m, const vector<Byte> &bytes,
     unsigned byte_number = 0;
 
     for (auto &b: bytes) {
-      expr expr_np = ub_pre(!b.isPtr());
+      expr expr_np = true;
 
       if (num_sub_byte_bits) {
         unsigned bits = (bitsize % 8) == 0 ? 0 : bitsize;
@@ -700,8 +697,8 @@ static StateValue bytesToValue(const Memory &m, const vector<Byte> &bytes,
       if (is_asm)
         expr_np = true;
 
-      StateValue v(is_asm ? b.forceCastToInt() : b.nonptrValue(),
-                   ibyteTy.combine_poison(expr_np, b.nonptrNonpoison()));
+      StateValue v(b.forceCastToInt(),
+                   ibyteTy.combine_poison(expr_np, b.nonPoison()));
       val = first ? std::move(v) : v.concat(val);
       first = false;
     }
@@ -1190,7 +1187,7 @@ vector<Byte> Memory::load(const Pointer &ptr, unsigned bytes, set<expr> &undef,
 
 Memory::DataType Memory::data_type(const vector<pair<unsigned, expr>> &data,
                                    bool full_store) const {
-  if (isAsmMode())
+  if (true || isAsmMode())
     return DATA_ANY;
 
   unsigned ty = DATA_NONE;
