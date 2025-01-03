@@ -15,6 +15,7 @@
 #include <functional>
 #include <numeric>
 #include <sstream>
+#include <iostream>
 
 using namespace smt;
 using namespace util;
@@ -3722,6 +3723,9 @@ MemInstr::ByteAccessInfo::get(const Type &t, bool store, unsigned align) {
   info.hasIntByteAccess = t.enforcePtrOrVectorType().isFalse();
   info.doesPtrStore     = ptr_access && store;
   info.doesPtrLoad      = ptr_access && !store;
+  std::cout << "t: " << t << std::endl;
+  std::cout << "getCommonAccessSize(t): " << getCommonAccessSize(t) << std::endl;
+  std::cout << "align: " << align << std::endl;
   info.byteSize         = gcd(align, getCommonAccessSize(t));
   if (auto intTy = t.getAsIntType())
     info.subByteAccess  = intTy->maxSubBitAccess();

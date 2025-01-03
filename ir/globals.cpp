@@ -2,6 +2,7 @@
 // Distributed under the MIT license that can be found in the LICENSE file.
 
 #include "ir/globals.h"
+#include "globals.h"
 #include "smt/expr.h"
 #include <string_view>
 
@@ -48,5 +49,6 @@ bool does_ptr_mem_access = true;
 bool does_ptr_store = true;
 unsigned heap_block_alignment = 8;
 bool has_indirect_fncalls = true;
+unsigned min_access_size = 8;
 
 }

@@ -45,6 +45,7 @@ protected:
 
 public:
   Type(std::string &&name) : name(std::move(name)) {}
+  virtual unsigned bitwidth() const { return 0; }
   virtual unsigned bits() const = 0;
   virtual unsigned np_bits(bool fromInt) const;
 
@@ -188,14 +189,15 @@ public:
 
 
 class ByteType final : public Type {
-  unsigned bitwidth = 0;
+  unsigned bw = 0;
   bool defined = false;
 
 public:
   ByteType(std::string &&name) : Type(std::move(name)) {}
   ByteType(std::string &&name, unsigned bitwidth)
-    : Type(std::move(name)), bitwidth(bitwidth), defined(true) {}
+    : Type(std::move(name)), bw(bitwidth), defined(true) {}
 
+  unsigned bitwidth() const override;
   unsigned bits() const override;
   IR::StateValue getDummyValue(bool non_poison) const override;
   smt::expr getTypeConstraints() const override;

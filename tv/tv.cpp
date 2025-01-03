@@ -318,7 +318,10 @@ struct TVLegacyPass final : public llvm::ModulePass {
       auto types = verifier.getTypings();
       if (!types) {
         *out << "Transformation doesn't verify!\n"
-                "ERROR: program doesn't type check!\n\n";
+                "ERROR: program doesn't type check!\n";
+        *out << t << "\n";
+        writeBitcode(report_filename);
+        *out << "\n";
         goto done;
       }
       assert(types.hasSingleTyping());

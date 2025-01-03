@@ -13,6 +13,7 @@
 #include "util/stopwatch.h"
 #include "util/symexec.h"
 #include <algorithm>
+#include <iostream>
 #include <bit>
 #include <climits>
 #include <iostream>
@@ -1043,8 +1044,6 @@ static void calculateAndInitConstants(Transform &t) {
   set<string> inaccessiblememonly_fns;
   num_inaccessiblememonly_fns = 0;
 
-  // Minimum access size (in bytes)
-  uint64_t min_access_size = 8;
   uint64_t loc_src_alloc_aligned_size = 0;
   uint64_t loc_tgt_alloc_aligned_size = 0;
   unsigned min_vect_elem_sz = 0;
@@ -1158,6 +1157,10 @@ static void calculateAndInitConstants(Transform &t) {
         does_int_mem_access  |= info.hasIntByteAccess;
         does_mem_access      |= info.doesMemAccess();
         observes_addresses   |= info.observesAddresses;
+        std::cout << "mi: " << mi->getName() << std::endl;
+        std::cout << "min_access_size: " << min_access_size << std::endl;
+        std::cout << "info.byteSize: " << info.byteSize << std::endl;
+        std::cout << "gcd(min_access_size, info.byteSize): " << gcd(min_access_size, info.byteSize) << std::endl;
         min_access_size       = gcd(min_access_size, info.byteSize);
         num_sub_byte_bits     = max(num_sub_byte_bits,
                                     (unsigned)bit_width(info.subByteAccess));
@@ -1179,6 +1182,10 @@ static void calculateAndInitConstants(Transform &t) {
         min_access_size = gcd(min_access_size, getCommonAccessSize(t));
       } else if (auto *bc = isCast(ConversionOp::ByteCast, i)) {
         auto &t = bc->getType();
+        std::cout << "min_access_size: " << min_access_size << std::endl;
+        std::cout << "t: " << t << std::endl;
+        std::cout << "getCommonAccessSize(t): " << getCommonAccessSize(t) << std::endl;
+        std::cout << "gcd(min_access_size, getCommonAccessSize(t)): " << gcd(min_access_size, getCommonAccessSize(t)) << std::endl;
         min_access_size = gcd(min_access_size, getCommonAccessSize(t));
 
       } else if (auto *ic = dynamic_cast<const ICmp*>(&i)) {

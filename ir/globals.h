@@ -99,4 +99,6 @@ extern unsigned heap_block_alignment;
 
 extern bool has_indirect_fncalls;
 
+// Minimum access size (in bytes)
+extern unsigned min_access_size;
 }

@@ -2,6 +2,7 @@
 // Distributed under the MIT license that can be found in the LICENSE file.
 
 #include "ir/memory.h"
+#include "globals.h"
 #include "ir/function.h"
 #include "ir/globals.h"
 #include "ir/state.h"
@@ -14,6 +15,7 @@
 #include <array>
 #include <numeric>
 #include <string>
+#include <iostream>
 
 #define MAX_STORED_PTRS_SET 3
 
@@ -600,6 +602,9 @@ vector<Byte> Memory::valueToBytes(const StateValue &val, const Type &fromType,
   } else if (fromType.isByteType()) {
     unsigned bitsize = val.bits();
     unsigned bytesize = divide_up(bitsize, Byte::bitsByte());
+    std::cout << "bitsize: " << bitsize << "\n";
+    std::cout << "bytesize: " << bytesize << "\n";
+    std::cout << "Byte::bitsByte(): " << Byte::bitsByte() << "\n";
 
     StateValue byval = fromType.toInt(s, val);
     pad(byval, bytesize * Byte::bitsByte() - bitsize, s);
@@ -694,6 +699,10 @@ StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType) {
     return { std::move(loaded_ptr), std::move(non_poison) };
   } else if (toType.isByteType() || isByteVector(toType)) {
     auto bitsize = toType.bits();
+    std::cout << "toType: " << toType << "\n";
+    std::cout << "bitsize: " << bitsize << "\n";
+    std::cout << "Byte::bitsByte(): " << Byte::bitsByte() << "\n";
+    std::cout << "bytes.size(): " << bytes.size() << "\n";
     assert(divide_up(bitsize, Byte::bitsByte()) == bytes.size());
 
     StateValue val;
@@ -2305,14 +2314,19 @@ unsigned Memory::getStoreByteSize(const Type &ty) {
   if (ty.isPtrType())
     return divide_up(bits_program_pointer, 8);
 
-  if (ty.isByteType())
-    return divide_up(ty.bits(), Byte::bitsByte());
+  if (ty.isByteType()) {
+    // std::cout << "ty.bits(): " << ty.bits() << std::endl;
+    // std::cout << "Byte::bitsByte(): " << Byte::bitsByte() << std::endl;
+    return divide_up(ty.bitwidth(), 8);
+  }
 
   auto aty = ty.getAsAggregateType();
-  if (aty && (!isNonPtrVector(ty) || isByteVector(ty))) {
+  if (aty && (!isNonPtrVector(ty))) {
     unsigned sz = 0;
-    for (unsigned i = 0, e = aty->numElementsConst(); i < e; ++i)
+    for (unsigned i = 0, e = aty->numElementsConst(); i < e; ++i) {
       sz += getStoreByteSize(aty->getChild(i));
+      std::cout << "Adding size for element " << getStoreByteSize(aty->getChild(i)) << " of type " << aty->getChild(i) << std::endl;
+    }
     return sz;
   }
 
@@ -2337,6 +2351,10 @@ void Memory::store(const StateValue &v, const Type &type, unsigned offset0,
 
   } else {
     vector<Byte> bytes = valueToBytes(v, type, *state);
+    std::cout << "bytes.size() = " << bytes.size() << std::endl;
+    std::cout << "bytesz = " << bytesz << std::endl;
+    std::cout << "getStoreByteSize(type) = " << getStoreByteSize(type) << std::endl;
+    std::cout << "type = " << type << std::endl;
     assert(!v.isValid() || bytes.size() * bytesz == getStoreByteSize(type));
 
     for (unsigned i = 0, e = bytes.size(); i < e; ++i) {
@@ -2363,9 +2381,10 @@ void Memory::store(const expr &p, const StateValue &v, const Type &type,
 StateValue Memory::load(const Pointer &ptr, const Type &type, set<expr> &undef,
                         uint64_t align) {
   unsigned bytecount = getStoreByteSize(type);
+  std::cout << "bytecount for type " << type << " is " << bytecount << std::endl;
 
   auto aty = type.getAsAggregateType();
-  if (aty && (!isNonPtrVector(type) || isByteVector(type))) {
+  if (aty && !isNonPtrVector(type)) {
     vector<StateValue> member_vals;
     unsigned byteofs = 0;
     for (unsigned i = 0, e = aty->numElementsConst(); i < e; ++i) {

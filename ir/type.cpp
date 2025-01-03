@@ -2,6 +2,7 @@
 // Distributed under the MIT license that can be found in the LICENSE file.
 
 #include "ir/type.h"
+#include "globals.h"
 #include "ir/globals.h"
 #include "ir/state.h"
 #include "smt/solver.h"
@@ -431,7 +432,11 @@ void IntType::print(ostream &os) const {
 
 
 unsigned ByteType::bits() const {
-  return Byte::bitsByte() * bitwidth / 8;
+  return Byte::bitsByte() * bw / 8 / min_access_size;
+}
+
+unsigned ByteType::bitwidth() const {
+  return bw;
 }
 
 StateValue ByteType::getDummyValue(bool non_poison) const {
@@ -450,7 +455,7 @@ expr ByteType::getTypeConstraints() const {
 }
 
 expr ByteType::sizeVar() const {
-  return defined ? expr::mkUInt(bitwidth / 8 * bits_byte, var_bw_bits)
+  return defined ? expr::mkUInt(bw / 8 * bits_byte, var_bw_bits)
                  : Type::sizeVar();
 }
 
@@ -460,7 +465,7 @@ expr ByteType::operator==(const ByteType &rhs) const {
 
 void ByteType::fixup(const Model &m) {
   if (!defined)
-    bitwidth = m.getUInt(sizeVar());
+    bw = m.getUInt(sizeVar());
 }
 
 bool ByteType::isByteType() const {
@@ -495,8 +500,8 @@ void ByteType::printVal(ostream &os, const State &s, const expr &e) const {
 }
 
 void ByteType::print(ostream &os) const {
-  if (bitwidth)
-    os << 'b' << bitwidth;
+  if (bw)
+    os << 'b' << bw;
 }
 
 
@@ -1665,6 +1670,8 @@ uint64_t getCommonAccessSize(const IR::Type &ty) {
   }
   if (ty.isPtrType())
     return IR::bits_program_pointer / 8;
+  if (ty.isByteType())
+    return divide_up(ty.bitwidth(), 8);
   return divide_up(ty.bits(), 8);
 }
 }
