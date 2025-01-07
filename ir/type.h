@@ -72,6 +72,7 @@ public:
   virtual smt::expr enforceByteType(unsigned bits = 0) const;
   smt::expr enforceIntOrPtrType() const;
   smt::expr enforceIntOrFloatOrPtrType() const;
+  smt::expr enforceIntOrByteOrPtrType() const;
   virtual smt::expr enforcePtrType() const;
   virtual smt::expr enforceStructType() const;
   virtual smt::expr enforceAggregateType(
@@ -93,6 +94,7 @@ public:
   smt::expr enforceByteOrVectorType(unsigned bits = 0) const;
   smt::expr enforceIntOrFloatOrPtrOrVectorType() const;
   smt::expr enforceIntOrByteOrFloatOrPtrOrVectorType() const;
+  smt::expr enforceIntOrByteOrPtrOrVectorType() const;
   smt::expr enforceIntOrPtrOrVectorType() const;
   smt::expr enforceFloatOrVectorType() const;
   smt::expr enforcePtrOrVectorType() const;

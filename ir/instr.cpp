@@ -2850,7 +2850,7 @@ expr ICmp::getTypeConstraints(const Function &f) const {
   return Value::getTypeConstraints() &&
          getType().enforceIntOrVectorType(1) &&
          getType().enforceVectorTypeEquiv(a->getType()) &&
-         a->getType().enforceIntOrPtrOrVectorType() &&
+         a->getType().enforceIntOrByteOrPtrOrVectorType() &&
          a->getType() == b->getType();
 }
 
