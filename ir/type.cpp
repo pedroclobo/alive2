@@ -535,7 +535,24 @@ ByteType::refines(State &src_s, State &tgt_s, const StateValue &src,
 
 expr ByteType::mkInput(State &s, const char *name,
                        const ParamAttrs &attrs) const {
-  return expr::mkVar(name, bits());
+  expr var = expr::mkVar(name, bits());
+  auto bytes = s.getMemory().valueToBytes({ expr(var), true }, *this, s);
+
+  Pointer p = bytes[0].ptr();
+  s.addAxiom(bytes[0].isPtr().implies(!p.isLocal(false)));
+
+  return var;
+}
+
+pair<expr, expr>
+ByteType::mkUndefInput(State &s, const ParamAttrs &attrs) const {
+  expr var = expr::mkUInt(0, bits());
+  auto bytes = s.getMemory().valueToBytes({ expr(var), true }, *this, s);
+
+  Pointer p = bytes[0].ptr();
+  s.addAxiom(bytes[0].isPtr().implies(!p.isLocal(false)));
+
+  return { var, true };
 }
 
 void ByteType::printVal(ostream &os, const State &s, const expr &e) const {

@@ -2370,9 +2370,10 @@ StateValue Memory::load(const Pointer &ptr, const Type &type, set<expr> &undef,
     return aty->aggregateVals(member_vals);
   }
 
-  bool is_ptr = type.isPtrType();
+  expr is_ptr = type.isPtrType();
   auto loadedBytes = load(ptr, bytecount, undef, align, little_endian,
-                          is_ptr ? DATA_PTR : DATA_INT);
+                          is_ptr.isTrue() ? DATA_PTR : DATA_INT);
+  is_ptr |= loadedBytes[0].isPtr();
   auto val = bytesToValue(loadedBytes, type);
 
   // partial order reduction for fresh pointers
@@ -2380,10 +2381,11 @@ StateValue Memory::load(const Pointer &ptr, const Type &type, set<expr> &undef,
   // Note that if we reached the max number of bids, it's pointless to
   // remember that the pointer must be within [0, max], so skip this code
   // in that case to save memory.
-  if (is_ptr && !val.non_poison.isFalse() &&
+  if (is_ptr.isTrue() && !val.non_poison.isFalse() &&
       next_nonlocal_bid <= max_program_nonlocal_bid()) {
     optional<unsigned> max_bid;
-    for (auto &p : all_leaf_ptrs(*this, val.value)) {
+    expr value = type.isByteType() ? loadedBytes[0].ptr()() : val.value;
+    for (auto &p : all_leaf_ptrs(*this, value)) {
       auto islocal = p.isLocal();
       auto bid = p.getShortBid();
       if (!islocal.isTrue() && !bid.isConst()) {
