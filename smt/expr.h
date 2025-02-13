@@ -364,12 +364,13 @@ public:
   expr simplify() const;
   expr simplifyNoTimeout() const;
 
-  expr foldTopLevel() const;
+  expr foldTopLevel(int depth = 1) const;
 
   // replace v1 -> v2
   expr subst(const std::vector<std::pair<expr, expr>> &repls) const;
   expr subst_simplify(const std::vector<std::pair<expr, expr>> &repls) const;
   expr subst(const expr &from, const expr &to) const;
+  expr substTopLevel(const expr &from, const expr &to, int depth = 1) const;
 
   // replace the 1st quantified variable
   expr subst_var(const expr &repl) const;

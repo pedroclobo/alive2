@@ -1072,6 +1072,10 @@ static void calculateAndInitConstants(Transform &t) {
   bool does_mem_access = false;
   bool has_ptr_load = false;
 
+  bool has_non_exact_bytecast = false;
+  bool has_bytecast_to_ptr = false;
+  bool has_bytecast_to_int = false;
+
   auto update_min_vect_sz = [&](const Type &ty) {
     auto elemsz = minVectorElemSize(ty);
     if (min_vect_elem_sz && elemsz)
@@ -1199,6 +1203,9 @@ static void calculateAndInitConstants(Transform &t) {
       } else if (auto *bc = isCast(ConversionOp::ByteCast, i)) {
         auto &t = bc->getType();
         min_access_size = gcd(min_access_size, getCommonAccessSize(t));
+        has_bytecast_to_ptr |= hasPtr(t);
+        has_bytecast_to_int |= !hasPtr(t);
+        has_non_exact_bytecast |= !(bc->getFlags() & ConversionOp::EXACT);
 
       } else if (auto *ic = dynamic_cast<const ICmp*>(&i)) {
         observes_addresses |= ic->isPtrCmp() &&
@@ -1215,7 +1222,12 @@ static void calculateAndInitConstants(Transform &t) {
     num_nonlocals_inst_src = df.getResult().num_nonlocals;
   }
 
-  does_ptr_mem_access = has_ptr_load || does_ptr_store;
+  // Use ptr bytes if there is a bytecast to ptr or there is a non-exact
+  // bytecast (this is needed as only using int bytes would not reveal the
+  // side-effects of the bytecast(bitcast) roundtrip)
+  does_ptr_mem_access = has_ptr_load || does_ptr_store ||
+                        has_non_exact_bytecast || has_bytecast_to_ptr;
+  does_int_mem_access |= has_bytecast_to_int;
   if (does_any_byte_access && !does_int_mem_access && !does_ptr_mem_access)
     // Use int bytes only
     does_int_mem_access = true;
@@ -1235,7 +1247,8 @@ static void calculateAndInitConstants(Transform &t) {
   // check if null block is needed
   // Global variables cannot be null pointers
   has_null_block = num_null_ptrinputs > 0 || has_null_pointer ||
-                  has_ptr_load || has_fncall || has_int2ptr;
+                  has_ptr_load || has_fncall || has_int2ptr ||
+                  has_bytecast_to_ptr || has_non_exact_bytecast;
 
   num_nonlocals_src = num_globals_src + num_ptrinputs + num_nonlocals_inst_src +
                       num_inaccessiblememonly_fns + has_null_block +

@@ -2231,11 +2231,21 @@ expr expr::simplifyNoTimeout() const {
   return Z3_simplify_ex(ctx(), ast(), ctx.getNoTimeoutParam());
 }
 
-expr expr::foldTopLevel() const {
+expr expr::foldTopLevel(int depth) const {
+  if (depth <= 0)
+    return *this;
+
+  expr e;
+  unsigned low, high;
+  if (isExtract(e, high, low))
+    return e.foldTopLevel(depth - 1).extract(high, low);
+
   expr cond, then, els;
   if (isIf(cond, then, els))
-    return
-      expr::mkIf(cond.foldTopLevel(), then.foldTopLevel(), els.foldTopLevel());
+    return expr::mkIf(
+      cond.foldTopLevel(depth - 1),
+      then.foldTopLevel(depth - 1),
+      els.foldTopLevel(depth - 1));
 
   expr array, idx;
   if (isLoad(array, idx) && idx.isConst())
@@ -2282,6 +2292,28 @@ expr expr::subst(const expr &from, const expr &to) const {
   auto f = from();
   auto t = to();
   return Z3_substitute(ctx(), ast(), 1, &f, &t);
+}
+
+expr expr::substTopLevel(const expr &from, const expr &to, int depth) const {
+  if (depth <= 0)
+    return *this;
+
+  if (this->eq(from))
+    return to;
+
+  expr e;
+  unsigned low, high;
+  if (isExtract(e, high, low))
+    return e.substTopLevel(from, to, depth - 1).extract(high, low);
+
+  expr cond, then, els;
+  if (isIf(cond, then, els))
+    return expr::mkIf(
+      cond.substTopLevel(from, to, depth - 1),
+      then.substTopLevel(from, to, depth - 1),
+      els.substTopLevel(from, to, depth - 1));
+
+  return *this;
 }
 
 expr expr::subst_var(const expr &repl) const {

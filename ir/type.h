@@ -215,6 +215,8 @@ public:
             const StateValue &tgt) const override;
   smt::expr
     mkInput(State &s, const char *name, const ParamAttrs &attrs) const override;
+  std::pair<smt::expr, smt::expr>
+    mkUndefInput(State &s, const ParamAttrs &attrs) const override;
   void printVal(std::ostream &os, const State &s,
                 const smt::expr &e) const override;
   void print(std::ostream &os) const override;

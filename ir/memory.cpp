@@ -6,9 +6,11 @@
 #include "ir/globals.h"
 #include "ir/state.h"
 #include "ir/value.h"
+#include "smt/smt.h"
 #include "smt/solver.h"
 #include "util/compiler.h"
 #include "util/config.h"
+#include "util/errors.h"
 #include <algorithm>
 #include <array>
 #include <numeric>
@@ -293,8 +295,17 @@ Byte Byte::mkPoisonByte(const Memory &m) {
   return { m, StateValue(expr::mkUInt(0, bits_byte), false), 0, true };
 }
 
+expr Byte::sign() const {
+  return p.sign();
+}
+
 expr Byte::isPtr() const {
   return p.sign() == 1;
+}
+
+expr Byte::poisonBit() const {
+  auto bit = p.bits() - 1 - byte_has_ptr_bit();
+  return p.extract(bit, bit);
 }
 
 expr Byte::ptrNonpoison() const {
@@ -1290,7 +1301,7 @@ void Memory::store(const Pointer &ptr,
 
   for (auto &[offset, val] : data) {
     Byte byte(*this, expr(val));
-    escapeLocalPtr(byte.ptrValue(), byte.isPtr() && byte.ptrNonpoison());
+    escapeLocalPtr(byte.ptrValue(), byte.isPtr(), byte.ptrNonpoison());
   }
 
   unsigned bytes = data.size() * (bits_byte/8);
@@ -2413,9 +2424,10 @@ StateValue Memory::load(const Pointer &ptr, const Type &type, set<expr> &undef,
     return aty->aggregateVals(member_vals);
   }
 
-  bool is_ptr = type.isPtrType();
+  expr is_ptr = type.isPtrType();
   auto loadedBytes = load(ptr, bytecount, undef, align, little_endian,
-                          is_ptr ? DATA_PTR : DATA_INT);
+                          is_ptr.isTrue() ? DATA_PTR : DATA_INT);
+  is_ptr |= loadedBytes[0].isPtr();
   auto val = bytesToValue(loadedBytes, type);
 
   // partial order reduction for fresh pointers
@@ -2423,10 +2435,11 @@ StateValue Memory::load(const Pointer &ptr, const Type &type, set<expr> &undef,
   // Note that if we reached the max number of bids, it's pointless to
   // remember that the pointer must be within [0, max], so skip this code
   // in that case to save memory.
-  if (is_ptr && !val.non_poison.isFalse() &&
+  if (is_ptr.isTrue() && !val.non_poison.isFalse() &&
       next_nonlocal_bid <= max_program_nonlocal_bid()) {
     optional<unsigned> max_bid;
-    for (auto &p : all_leaf_ptrs(*this, val.value)) {
+    expr value = type.isByteType() ? loadedBytes[0].ptr()() : val.value;
+    for (auto &p : all_leaf_ptrs(*this, value)) {
       auto islocal = p.isLocal();
       auto bid = p.getShortBid();
       if (!islocal.isTrue() && !bid.isConst()) {
@@ -2939,11 +2952,11 @@ void Memory::escape_helper(const expr &ptr, bool escapes) {
   }
 }
 
-void Memory::escapeLocalPtr(const expr &ptr, const expr &is_ptr) {
-  if (is_ptr.isFalse())
+void Memory::escapeLocalPtr(const expr &ptr, const expr &is_ptr, const expr &ptr_nonpoison) {
+  if ((is_ptr && ptr_nonpoison).isFalse())
     return;
 
-  escape_helper(ptr, true);
+  escape_helper(ptr.substTopLevel(is_ptr, true, 3), true);
 }
 
 void Memory::observesAddr(const Pointer &ptr, bool escapes) {
