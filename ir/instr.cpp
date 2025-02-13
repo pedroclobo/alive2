@@ -3792,7 +3792,7 @@ MemInstr::ByteAccessInfo::get(const Type &t, bool store, unsigned align) {
   ByteAccessInfo info;
   info.hasIntByteAccess = t.enforcePtrOrVectorType().isFalse();
   info.doesPtrStore     = ptr_access && store;
-  info.doesPtrLoad      = ptr_access && !store;
+  info.doesPtrLoad      = (ptr_access || hasByte(t)) && !store;
   info.byteSize         = gcd(align, getCommonAccessSize(t));
   info.subByteAccess    = t.maxSubBitAccess();
   return info;

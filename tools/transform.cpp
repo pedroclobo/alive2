@@ -1017,15 +1017,16 @@ static void calculateAndInitConstants(Transform &t) {
   num_ptrinputs = 0;
   unsigned num_null_ptrinputs = 0;
   for (auto &arg : t.src.getInputs()) {
-    auto n = num_ptrs(arg.getType()) + num_bytes(arg.getType());
+    auto num_ptrs = ::num_ptrs(arg.getType());
+    auto num_bytes = ::num_bytes(arg.getType());
     auto in = dynamic_cast<const Input*>(&arg);
     if (in && in->hasAttribute(ParamAttrs::ByVal)) {
-      num_globals_src += n;
-      num_globals += n;
+      num_globals_src += num_ptrs;
+      num_globals += num_ptrs;
     } else {
-      num_ptrinputs += n;
+      num_ptrinputs += num_ptrs + num_bytes;
       if (!in || !in->hasAttribute(ParamAttrs::NonNull))
-        num_null_ptrinputs += n;
+        num_null_ptrinputs += num_ptrs + num_bytes;
     }
   }
 
@@ -1087,7 +1088,7 @@ static void calculateAndInitConstants(Transform &t) {
       if (!i)
         continue;
 
-      has_ptr_arg |= hasPtr(i->getType());
+      has_ptr_arg |= hasPtr(i->getType()) || hasByte(i->getType());
       does_int_mem_access |= hasByte(i->getType());
       observes_addresses |= i->hasAttribute(ParamAttrs::Align) ||
                             i->hasAttribute(ParamAttrs::Dereferenceable) ||
@@ -1194,6 +1195,7 @@ static void calculateAndInitConstants(Transform &t) {
       } else if (auto *bc = isCast(ConversionOp::ByteCast, i)) {
         auto &t = bc->getType();
         min_access_size = gcd(min_access_size, getCommonAccessSize(t));
+        has_ptr_load |= hasPtr(t);
 
       } else if (auto *ic = dynamic_cast<const ICmp*>(&i)) {
         observes_addresses |= ic->isPtrCmp() &&
