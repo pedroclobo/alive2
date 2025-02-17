@@ -585,18 +585,29 @@ namespace IR {
 vector<Byte> Memory::valueToBytes(const StateValue &val, const Type &fromType,
                                   State &s) {
   vector<Byte> bytes;
-  if (fromType.isPtrType()) {
-    Pointer p(*this, val.value);
-    unsigned bytesize = bits_program_pointer / bits_byte;
+  if (fromType.isPtrType() ||
+     (fromType.isAggregateType() &&
+      fromType.getAsAggregateType()->getChild(0).isPtrType())) {
+    auto scalar = [&](const StateValue &v) {
+      Pointer p(*this, v.value);
+      unsigned bytesize = bits_program_pointer / bits_byte;
 
-    // constant global can't store pointers that alias with local blocks
-    if (s.isInitializationPhase() && !p.isLocal().isFalse()) {
-      expr bid  = expr::mkUInt(0, 1).concat(p.getShortBid());
-      p = Pointer(*this, bid, p.getOffset(), p.getAttrs());
-    }
+      // constant global can't store pointers that alias with local blocks
+      if (s.isInitializationPhase() && !p.isLocal().isFalse()) {
+        expr bid  = expr::mkUInt(0, 1).concat(p.getShortBid());
+        p = Pointer(*this, bid, p.getOffset(), p.getAttrs());
+      }
 
-    for (unsigned i = 0; i < bytesize; ++i)
-      bytes.emplace_back(*this, StateValue(expr(p()), expr(val.non_poison)), i);
+      for (unsigned i = 0; i < bytesize; ++i)
+        bytes.emplace_back(*this, StateValue(expr(p()), expr(v.non_poison)), i);
+    };
+
+    if (auto *ATy = fromType.getAsAggregateType())
+      for (unsigned i = 0, els = ATy->numElementsConst(); i < els; ++i)
+        scalar(ATy->extract(val, i));
+    else
+      scalar(val);
+
   } else if (fromType.isByteType() || isByteVector(fromType)) {
     unsigned bitsize = val.bits();
     unsigned bytesize = divide_up(bitsize, Byte::bitsByte());

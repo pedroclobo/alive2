@@ -123,3 +123,9 @@ define b64 @b32_vec_to_b64(<2 x b32> %v, ptr %p) {
   %l = load b64, ptr %p
   ret b64 %l
 }
+
+define <2 x b64> @_2ptr_to_2b64(<2 x ptr> %v, ptr %p) {
+  store <2 x ptr> %v, ptr %p
+  %l = load <2 x b64>, ptr %p
+  ret <2 x b64> %l
+}

@@ -123,3 +123,9 @@ define b64 @b32_vec_to_b64(<2 x b32> %v, ptr %p) {
   %c = bitcast <2 x b32> %v to b64
   ret b64 %c
 }
+
+define <2 x b64> @_2ptr_to_2b64(<2 x ptr> %v, ptr %p) {
+  store <2 x ptr> %v, ptr %p
+  %c = bitcast <2 x ptr> %v to <2 x b64>
+  ret <2 x b64> %c
+}
