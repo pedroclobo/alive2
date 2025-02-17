@@ -2362,7 +2362,7 @@ StateValue Memory::load(const Pointer &ptr, const Type &type, set<expr> &undef,
   unsigned bytecount = getStoreByteSize(type);
 
   auto aty = type.getAsAggregateType();
-  if (aty && (!isNonPtrVector(type) || isByteVector(type))) {
+  if (aty && !isNonPtrVector(type)) {
     vector<StateValue> member_vals;
     unsigned byteofs = 0;
     for (unsigned i = 0, e = aty->numElementsConst(); i < e; ++i) {
