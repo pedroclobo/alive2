@@ -1214,27 +1214,20 @@ vector<Byte> Memory::load(const Pointer &ptr, unsigned bytes, set<expr> &undef,
 
   auto fn = [&](MemBlock &blk, const Pointer &ptr, unsigned bid, bool local,
                 expr &&cond) {
-    bool is_poison = (type & blk.type) == DATA_NONE;
-    if (is_poison) {
-      for (unsigned i = 0; i < loaded_bytes; ++i) {
-        loaded[i].add(poison, cond);
-      }
-    } else {
-      uint64_t blk_size = UINT64_MAX;
-      bool single_load
-        = ptr.blockSizeAligned().isUInt(blk_size) && blk_size == bytes;
-      auto offset      = ptr.getShortOffset();
-      expr blk_offset  = single_load ? expr::mkUInt(0, offset) : offset;
+    uint64_t blk_size = UINT64_MAX;
+    bool single_load
+      = ptr.blockSizeAligned().isUInt(blk_size) && blk_size == bytes;
+    auto offset      = ptr.getShortOffset();
+    expr blk_offset  = single_load ? expr::mkUInt(0, offset) : offset;
 
-      for (unsigned i = 0; i < loaded_bytes; ++i) {
-        unsigned idx = left2right ? i : (loaded_bytes - i - 1);
-        assert(idx < blk_size);
-        uint64_t max_idx = blk_size - bytes + idx;
-        expr off = blk_offset + expr::mkUInt(idx, offset);
-        loaded[i].add(::raw_load(blk.val, off, max_idx), cond);
-      }
-      undef.insert(blk.undef.begin(), blk.undef.end());
+    for (unsigned i = 0; i < loaded_bytes; ++i) {
+      unsigned idx = left2right ? i : (loaded_bytes - i - 1);
+      assert(idx < blk_size);
+      uint64_t max_idx = blk_size - bytes + idx;
+      expr off = blk_offset + expr::mkUInt(idx, offset);
+      loaded[i].add(::raw_load(blk.val, off, max_idx), cond);
     }
+    undef.insert(blk.undef.begin(), blk.undef.end());
   };
 
   access(ptr, expr::mkUInt(bytes, bits_size_t), align, false, fn);
