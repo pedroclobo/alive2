@@ -129,3 +129,11 @@ define <2 x b64> @_2ptr_to_2b64(<2 x ptr> %v, ptr %p) {
   %l = load <2 x b64>, ptr %p
   ret <2 x b64> %l
 }
+
+define b8 @i8_const_to_b8() {
+  ret b8 255
+}
+
+define b32 @i32_const_to_b32() {
+  ret b32 255
+}

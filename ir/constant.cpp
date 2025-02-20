@@ -1,6 +1,7 @@
 // Copyright (c) 2018-present The Alive2 Authors.
 // Distributed under the MIT license that can be found in the LICENSE file.
 
+#include "globals.h"
 #include "ir/constant.h"
 #include "smt/expr.h"
 #include "util/compiler.h"
@@ -31,8 +32,17 @@ IntConst::IntConst(Type &type, string &&val)
                                  isByte(type.isByteType()) {}
 
 StateValue IntConst::toSMT(State &s) const {
-  if (auto v = get_if<int64_t>(&val))
+  if (auto v = get_if<int64_t>(&val)) {
+    // Construct byte metadata
+    if (auto ty = getType().getAsByteType()) {
+      assert(num_sub_byte_bits == 0);
+      unsigned bw = ty->bw();
+      auto intTy = IntType("int", bw);
+      return s.getMemory().bytesToValue(
+        s.getMemory().valueToBytes({expr::mkInt(*v, bw), true}, intTy, s), *ty);
+    }
     return { expr::mkInt(*v, bits()), true };
+  }
   return { expr::mkInt(get<string>(val).c_str(), bits()), true };
 }
 
