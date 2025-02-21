@@ -5,10 +5,12 @@
 #include "ir/function.h"
 #include "ir/state.h"
 #include "util/config.h"
+#include "util/errors.h"
 
 using namespace IR;
 using namespace std;
 using util::config::dbg;
+using util::AliveException;
 
 static void sym_exec_instr(State &s, const Instr &i) {
   auto &val = s.exec(i);

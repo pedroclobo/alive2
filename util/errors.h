@@ -19,6 +19,13 @@ public:
     : msg(std::move(msg)), is_unsound(is_unsound) {}
 };
 
+struct Z3Exception {
+  std::string msg;
+  std::string func_name;
+
+public:
+  Z3Exception(std::string &&msg) : msg(std::move(msg)) {}
+};
 
 class Errors {
   std::set<std::pair<std::string, bool>> errs;
@@ -29,10 +36,12 @@ public:
   Errors(const char *str, bool is_unsound);
   Errors(std::string &&str, bool is_unsound);
   Errors(AliveException &&e);
+  Errors(Z3Exception &&e);
 
   void add(const char *str, bool is_unsound);
   void add(std::string &&str, bool is_unsound);
   void add(AliveException &&e);
+  void add(Z3Exception &&e);
   void addWarning(const char *str);
 
   void clear();

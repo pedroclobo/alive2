@@ -1468,6 +1468,7 @@ Errors TransformVerify::verify() const {
   }
 
   Errors errs;
+  string_view func_name = t.src.getName();
   try {
     auto [src_state, tgt_state] = exec();
 
@@ -1489,7 +1490,11 @@ Errors TransformVerify::verify() const {
     check_refinement(errs, t, *src_state, *tgt_state, nullptr, t.src.getType(),
                      src_state->returnVal(), tgt_state->returnVal(),
                      check_each_var);
+  // TODO: catch z3 exception
   } catch (AliveException e) {
+    return std::move(e);
+  } catch (util::Z3Exception e) {
+    e.func_name = func_name;
     return std::move(e);
   }
   return errs;
