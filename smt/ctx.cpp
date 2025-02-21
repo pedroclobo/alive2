@@ -4,6 +4,7 @@
 #include "smt/ctx.h"
 #include "smt/smt.h"
 #include "util/config.h"
+#include "util/errors.h"
 #include <cstdlib>
 #include <iostream>
 #include <string_view>
@@ -11,6 +12,7 @@
 
 using namespace std;
 using util::config::dbg;
+using util::Z3Exception;
 
 static void z3_error_handler(Z3_context ctx, Z3_error_code err) {
   string_view str = Z3_get_error_msg(ctx, err);
@@ -19,8 +21,7 @@ static void z3_error_handler(Z3_context ctx, Z3_error_code err) {
   if (str == "canceled")
     return;
 
-  dbg() << "Severe Z3 error: " << str << " [code=" << err << ']' << endl;
-  _Exit(-1);
+  throw Z3Exception("Severe Z3 error: " + std::string(str));
 }
 
 namespace smt {

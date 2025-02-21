@@ -2,6 +2,7 @@
 // Distributed under the MIT license that can be found in the LICENSE file.
 
 #include "util/errors.h"
+#include "errors.h"
 
 using namespace std;
 
@@ -19,6 +20,10 @@ Errors::Errors(AliveException &&e) {
   add(std::move(e));
 }
 
+Errors::Errors(Z3Exception &&e) {
+  add(std::move(e));
+}
+
 void Errors::add(const char *str, bool is_unsound) {
   add(string(str), is_unsound);
 }
@@ -31,6 +36,11 @@ void Errors::add(string &&str, bool is_unsound) {
 
 void Errors::add(AliveException &&e) {
   add(std::move(e.msg), e.is_unsound);
+}
+
+void Errors::add(Z3Exception &&e) {
+  std::string msg = e.msg + " in " + e.func_name;
+  add(std::move(msg), true);
 }
 
 void Errors::addWarning(const char *str) {
