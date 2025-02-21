@@ -659,7 +659,23 @@ StateValue Memory::bytesToValue(const vector<Byte> &bytes, const Type &toType,
 
   bool is_asm = isAsmMode() || punning;
 
-  if (toType.isPtrType()) {
+  if ((toType.isAggregateType() &&
+       toType.getAsAggregateType()->getChild(0).isPtrType())) {
+    auto aty = toType.getAsAggregateType();
+    assert(bytes.size() == aty->numElementsConst() * bits_program_pointer / bits_byte);
+    vector<StateValue> member_vals;
+    for (unsigned i = 0, e = aty->numElementsConst(); i < e; ++i) {
+      auto start = i * bits_program_pointer / bits_byte;
+      auto end = start + bits_program_pointer / bits_byte;
+      // TODO: potentially expensive copy
+      // could use std::span maybe
+      vector<Byte> sliced_bytes(bytes.begin() + start, bytes.begin() + end);
+      member_vals.emplace_back(
+        bytesToValue(sliced_bytes, aty->getChild(i), punning)
+      );
+    }
+    return aty->aggregateVals(member_vals);
+  } else if (toType.isPtrType()) {
     assert(bytes.size() == bits_program_pointer / bits_byte);
     expr loaded_ptr, is_ptr;
     // The result is not poison if all of these hold:

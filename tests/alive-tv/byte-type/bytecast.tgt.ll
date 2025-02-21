@@ -62,3 +62,18 @@ define float @b64_to_float(ptr %p) {
   %v = load float, ptr %p
   ret float %v
 }
+
+define <8 x i8> @_4b16_to_8i8(ptr %p) {
+  %l = load <8 x i8>, ptr %p
+  ret <8 x i8> %l
+}
+
+define <2 x ptr> @_4b32_to_2ptr(ptr %p) {
+  %l = load <2 x ptr>, ptr %p
+  ret <2 x ptr> %l
+}
+
+define <2 x i32> @b64_to_2i32(ptr %p) {
+  %l = load <2 x i32>, ptr %p
+  ret <2 x i32> %l
+}

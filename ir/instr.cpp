@@ -1671,6 +1671,14 @@ StateValue ConversionOp::toSMT(State &s) const {
       return s.getMemory().bytecast(v, from_type, to_type, (flags & EXACT));
     };
 
+    // no-trunc
+    if ((val->getType().isVectorType() && getType().isVectorType() &&
+         val->getType().enforceVectorTypeEquiv(getType()).isFalse()) ||
+        (val->getType().isVectorType() != getType().isVectorType()))
+      return
+        s.getMemory().bytesToValue(s.getMemory().valueToBytes(std::move(v), val->getType(), s), getType());
+
+    // trunc
     if (getType().isVectorType()) {
       vector<StateValue> vals;
       auto retty = getType().getAsAggregateType();
@@ -1751,10 +1759,7 @@ expr ConversionOp::getTypeConstraints(const Function &f) const {
     break;
   case ByteCast:
     c = getType().enforceIntOrFloatOrPtrOrVectorType() &&
-        val->getType().enforceByteOrVectorType() &&
-        expr::mkIf(getType().enforcePtrOrVectorType(),
-                   val->getType().scalarSize().uge(bits_program_pointer),
-                   val->getType().scalarSize().uge(getType().scalarSize()));
+        val->getType().enforceByteOrVectorType();
     break;
   case Ptr2Int:
     c = getType().enforceIntOrVectorType() &&
@@ -1767,7 +1772,7 @@ expr ConversionOp::getTypeConstraints(const Function &f) const {
   }
 
   c &= Value::getTypeConstraints();
-  if (op != BitCast)
+  if (op != BitCast && op != ByteCast)
     c &= getType().enforceVectorTypeEquiv(val->getType());
   return c;
 }

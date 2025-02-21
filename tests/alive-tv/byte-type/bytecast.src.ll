@@ -81,3 +81,21 @@ define float @b64_to_float(ptr %p) {
   %c = bytecast exact b64 %v to float
   ret float %c
 }
+
+define <8 x i8> @_4b16_to_8i8(ptr %p) {
+  %v = load <4 x b16>, ptr %p
+  %c = bytecast exact <4 x b16> %v to <8 x i8>
+  ret <8 x i8> %c
+}
+
+define <2 x ptr> @_4b32_to_2ptr(ptr %p) {
+  %v = load <4 x b32>, ptr %p
+  %c = bytecast exact <4 x b32> %v to <2 x ptr>
+  ret <2 x ptr> %c
+}
+
+define <2 x i32> @b64_to_2i32(ptr %p) {
+  %v = load b64, ptr %p
+  %c = bytecast exact b64 %v to <2 x i32>
+  ret <2 x i32> %c
+}
