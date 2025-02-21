@@ -1737,9 +1737,11 @@ expr ConversionOp::getTypeConstraints(const Function &f) const {
         val->getType().scalarSize().ult(getType().scalarSize());
     break;
   case Trunc:
-    c = getType().enforceIntOrVectorType() &&
-        val->getType().enforceIntOrVectorType() &&
-        getType().scalarSize().ult(val->getType().scalarSize());
+    c = ((getType().enforceIntOrVectorType() ==
+          val->getType().enforceIntOrVectorType() ||
+         (getType().enforceByteOrVectorType() ==
+          val->getType().enforceByteOrVectorType())) &&
+        getType().scalarSize().ult(val->getType().scalarSize()));
     break;
   case BitCast:
     c = getType().enforceIntOrByteOrFloatOrPtrOrVectorType() &&
