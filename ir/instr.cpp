@@ -3729,11 +3729,11 @@ MemInstr::ByteAccessInfo MemInstr::ByteAccessInfo::anyType(unsigned bytesz) {
 
 MemInstr::ByteAccessInfo
 MemInstr::ByteAccessInfo::get(const Type &t, bool store, unsigned align) {
-  bool ptr_access = hasPtr(t) || hasByte(t);
+  bool ptr_access = hasPtr(t);
   ByteAccessInfo info;
   info.hasIntByteAccess = t.enforcePtrOrVectorType().isFalse();
   info.doesPtrStore     = ptr_access && store;
-  info.doesPtrLoad      = ptr_access && !store;
+  info.doesPtrLoad      = (ptr_access || hasByte(t)) && !store;
   info.byteSize         = gcd(align, getCommonAccessSize(t));
   if (auto intTy = t.getAsIntType())
     info.subByteAccess  = intTy->maxSubBitAccess();
