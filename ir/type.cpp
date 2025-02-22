@@ -500,7 +500,7 @@ expr ByteType::toBV(expr e) const {
 }
 
 StateValue ByteType::toBV(StateValue v) const {
-  return { std::move(v.value), true };
+  return Type::toBV(v);
 }
 
 expr ByteType::fromBV(expr e) const {
