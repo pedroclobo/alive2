@@ -289,7 +289,9 @@ Byte Byte::mkPoisonByte(const Memory &m) {
   return { m, StateValue(expr::mkUInt(0, bits_byte), false), 0, true };
 }
 
-expr Byte::isPtr() const {
+expr Byte::isPtr(bool simplify) const {
+  if (simplify)
+    return p.sign().isOne();
   return p.sign() == 1;
 }
 
@@ -1273,7 +1275,7 @@ void Memory::store(const Pointer &ptr,
 
   for (auto &[offset, val] : data) {
     Byte byte(*this, expr(val));
-    escapeLocalPtr(byte.ptrValue(), byte.isPtr() && byte.ptrNonpoison());
+    escapeLocalPtr(byte.ptrValue(), byte.isPtr(true) && byte.ptrNonpoison());
   }
 
   unsigned bytes = data.size() * (bits_byte/8);
