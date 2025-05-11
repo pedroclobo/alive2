@@ -498,7 +498,7 @@ expr ByteType::mkInput(State &s, const char *name,
   auto bytes = s.getMemory().valueToBytes({ expr(var), true }, *this, s);
 
   Pointer p = bytes[0].ptr();
-  s.addAxiom(bytes[0].isPtr().implies(!p.isLocal(false)));
+  s.addAxiom(bytes[0].isPtr().implies(!p.isLocal()));
 
   return var;
 }
@@ -509,7 +509,7 @@ ByteType::mkUndefInput(State &s, const ParamAttrs &attrs) const {
   auto bytes = s.getMemory().valueToBytes({ expr(var), true }, *this, s);
 
   Pointer p = bytes[0].ptr();
-  s.addAxiom(bytes[0].isPtr().implies(!p.isLocal(false)));
+  s.addAxiom(bytes[0].isPtr().implies(!p.isLocal()));
 
   return { var, true };
 }
