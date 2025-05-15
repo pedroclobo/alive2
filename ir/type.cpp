@@ -499,24 +499,25 @@ expr ByteType::mkInput(State &s, const char *name,
 
   expr var;
   for (unsigned i = 0; i < bytes; ++i) {
-    auto size = Byte::bitsByte();
-    auto byte_var = expr::mkVar(name, size);
-    auto bytes = s.getMemory().valueToBytes({ expr(byte_var), true }, *this, s);
-    assert(bytes.size() == 1);
-    auto byte = bytes[0];
-    // gdb tells me the mkIf is a problem
-    // 67 bits (for byte) against 66 bits (for the other)
+    auto byte_var = expr::mkVar(name, Byte::bitsByte());
+    auto byte = s.getMemory().valueToBytes({ expr(byte_var), true }, *this, s)[0];
+    expr ptr_byte = byte.sign()
+      .concat(byte.poisonBit())
+      .concat(s.getMemory().mkInput(name, attrs))
+      .concat(byte.ptrByteoffset());
+    std::cout << "ptr_byte: " << ptr_byte.bits() << "\n";
+    std::cout << "byte_var: " << byte_var.bits() << "\n";
+    if (byte_var.bits() >= ptr_byte.bits())
+      ptr_byte = ptr_byte.concat_zeros(byte_var.bits() - ptr_byte.bits());
+    else
+      ptr_byte = byte_var;
+
     byte_var = expr::mkIf(
       byte.isPtr(),
-      byte.sign()
-        .concat(byte.poisonBit())
-        .concat(s.getMemory().mkInput(name, attrs))
-        .concat(byte.ptrByteoffset())
-        .concat_zeros(byte.ptrBytepadding()),
+      ptr_byte,
       byte_var
     );
-    assert(byte_var.bits() == size);
-    var = var.concat(byte_var);
+    var = i == 0 ? byte_var : var.concat(byte_var);
   }
 
   assert(var.bits() == bits());
@@ -526,15 +527,7 @@ expr ByteType::mkInput(State &s, const char *name,
 
 pair<expr, expr>
 ByteType::mkUndefInput(State &s, const ParamAttrs &attrs) const {
-  assert(false);
-  expr var = expr::mkUInt(0, bits());
-  auto bytes = s.getMemory().valueToBytes({ expr(var), true }, *this, s);
-
-  for (auto &b : bytes) {
-    s.addAxiom(b.isPtr().implies(!b.ptr().isLocal()));
-  }
-
-  return { var, true };
+  return { expr::mkUInt(0, bits()), true };
 }
 
 void ByteType::printVal(ostream &os, const State &s, const expr &e) const {
