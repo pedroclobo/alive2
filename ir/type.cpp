@@ -10,6 +10,7 @@
 #include <cassert>
 #include <numeric>
 #include <sstream>
+#include <iostream>
 
 using namespace smt;
 using namespace util;
@@ -494,11 +495,24 @@ ByteType::refines(State &src_s, State &tgt_s, const StateValue &src,
 
 expr ByteType::mkInput(State &s, const char *name,
                        const ParamAttrs &attrs) const {
-  expr var = expr::mkVar(name, bits());
-  auto bytes = s.getMemory().valueToBytes({ expr(var), true }, *this, s);
+  auto bytes = bits() / Byte::bitsByte();
 
-  Pointer p = bytes[0].ptr();
-  s.addAxiom(bytes[0].isPtr().implies(!p.isLocal()));
+  expr var;
+  for (unsigned i = 0; i < bytes; ++i) {
+    auto size = Byte::bitsByte();
+    auto byte_var = expr::mkVar(name, size);
+    auto bytes = s.getMemory().valueToBytes({ expr(byte_var), true }, *this, s);
+    assert(bytes.size() == 1);
+    auto byte = bytes[0];
+    byte_var = expr::mkIf(
+      byte.isPtr(),
+      byte_var.extract(size - 1, size - 2)
+              .concat(byte.ptrValue())
+              .concat(byte_var.extract(size - 18, 0)),
+      byte_var
+    );
+    var = var.concat(byte_var);
+  }
 
   return var;
 }
@@ -508,8 +522,9 @@ ByteType::mkUndefInput(State &s, const ParamAttrs &attrs) const {
   expr var = expr::mkUInt(0, bits());
   auto bytes = s.getMemory().valueToBytes({ expr(var), true }, *this, s);
 
-  Pointer p = bytes[0].ptr();
-  s.addAxiom(bytes[0].isPtr().implies(!p.isLocal()));
+  for (auto &b : bytes) {
+    s.addAxiom(b.isPtr().implies(!b.ptr().isLocal()));
+  }
 
   return { var, true };
 }
