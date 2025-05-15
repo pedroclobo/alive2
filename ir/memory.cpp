@@ -13,6 +13,7 @@
 #include <array>
 #include <numeric>
 #include <string>
+#include <iostream>
 
 #define MAX_STORED_PTRS_SET 3
 
@@ -288,8 +289,17 @@ Byte Byte::mkPoisonByte(const Memory &m) {
   return { m, StateValue(expr::mkUInt(0, bits_byte), false), 0, true };
 }
 
+expr Byte::sign() const {
+  return p.sign();
+}
+
 expr Byte::isPtr() const {
   return p.sign() == 1;
+}
+
+expr Byte::poisonBit() const {
+  auto bit = p.bits() - 1 - byte_has_ptr_bit();
+  return p.extract(bit, bit);
 }
 
 expr Byte::ptrNonpoison() const {
@@ -317,6 +327,10 @@ expr Byte::ptrByteoffset() const {
 
   unsigned start = padding_ptr_byte();
   return p.extract(bits_ptr_byte_offset() + start - 1, start);
+}
+
+unsigned Byte::ptrBytepadding() const {
+  return padding_ptr_byte();
 }
 
 expr Byte::nonptrNonpoison() const {

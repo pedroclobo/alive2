@@ -60,11 +60,14 @@ public:
 
   static Byte mkPoisonByte(const Memory &m);
 
+  smt::expr sign() const;
   smt::expr isPtr() const;
+  smt::expr poisonBit() const;
   smt::expr ptrNonpoison() const;
   Pointer ptr() const;
   smt::expr ptrValue() const;
   smt::expr ptrByteoffset() const;
+  unsigned ptrBytepadding() const;
   smt::expr nonptrNonpoison() const;
   smt::expr boolNonptrNonpoison() const;
   smt::expr nonptrValue() const;

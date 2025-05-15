@@ -504,21 +504,29 @@ expr ByteType::mkInput(State &s, const char *name,
     auto bytes = s.getMemory().valueToBytes({ expr(byte_var), true }, *this, s);
     assert(bytes.size() == 1);
     auto byte = bytes[0];
+    // gdb tells me the mkIf is a problem
+    // 67 bits (for byte) against 66 bits (for the other)
     byte_var = expr::mkIf(
       byte.isPtr(),
-      byte_var.extract(size - 1, size - 2)
-              .concat(byte.ptrValue())
-              .concat(byte_var.extract(size - 18, 0)),
+      byte.sign()
+        .concat(byte.poisonBit())
+        .concat(s.getMemory().mkInput(name, attrs))
+        .concat(byte.ptrByteoffset())
+        .concat_zeros(byte.ptrBytepadding()),
       byte_var
     );
+    assert(byte_var.bits() == size);
     var = var.concat(byte_var);
   }
+
+  assert(var.bits() == bits());
 
   return var;
 }
 
 pair<expr, expr>
 ByteType::mkUndefInput(State &s, const ParamAttrs &attrs) const {
+  assert(false);
   expr var = expr::mkUInt(0, bits());
   auto bytes = s.getMemory().valueToBytes({ expr(var), true }, *this, s);
 
