@@ -2227,11 +2227,21 @@ expr expr::simplifyNoTimeout() const {
   return Z3_simplify_ex(ctx(), ast(), ctx.getNoTimeoutParam());
 }
 
-expr expr::foldTopLevel() const {
+expr expr::foldTopLevel(int depth) const {
+  if (depth <= 0)
+    return *this;
+
+  expr e;
+  unsigned low, high;
+  if (isExtract(e, high, low))
+    return e.foldTopLevel(depth - 1).extract(high, low);
+
   expr cond, then, els;
   if (isIf(cond, then, els))
-    return
-      expr::mkIf(cond.foldTopLevel(), then.foldTopLevel(), els.foldTopLevel());
+    return expr::mkIf(
+      cond.foldTopLevel(depth - 1),
+      then.foldTopLevel(depth - 1),
+      els.foldTopLevel(depth - 1));
 
   expr array, idx;
   if (isLoad(array, idx) && idx.isConst())

@@ -288,8 +288,17 @@ Byte Byte::mkPoisonByte(const Memory &m) {
   return { m, StateValue(expr::mkUInt(0, bits_byte), false), 0, true };
 }
 
+expr Byte::sign() const {
+  return p.sign();
+}
+
 expr Byte::isPtr() const {
   return p.sign() == 1;
+}
+
+expr Byte::poisonBit() const {
+  auto bit = p.bits() - 1 - byte_has_ptr_bit();
+  return p.extract(bit, bit);
 }
 
 expr Byte::ptrNonpoison() const {
@@ -1275,7 +1284,7 @@ void Memory::store(const Pointer &ptr,
 
   for (auto &[offset, val] : data) {
     Byte byte(*this, expr(val));
-    escapeLocalPtr(byte.ptrValue(), byte.isPtr() && byte.ptrNonpoison());
+    escapeLocalPtr(byte.ptrValue(), byte.isPtr(), byte.ptrNonpoison());
   }
 
   unsigned bytes = data.size() * (bits_byte/8);
@@ -2920,11 +2929,11 @@ void Memory::escape_helper(const expr &ptr, AliasSet &set1, AliasSet *set2) {
   }
 }
 
-void Memory::escapeLocalPtr(const expr &ptr, const expr &is_ptr) {
-  if (is_ptr.isFalse())
+void Memory::escapeLocalPtr(const expr &ptr, const expr &is_ptr, const expr &ptr_nonpoison) {
+  if ((is_ptr && ptr_nonpoison).isFalse())
     return;
 
-  escape_helper(ptr, escaped_local_blks, &observed_addrs);
+  escape_helper(ptr.subst(is_ptr, true).foldTopLevel(2), escaped_local_blks, &observed_addrs);
 }
 
 void Memory::observesAddr(const Pointer &ptr) {

@@ -364,7 +364,7 @@ public:
   expr simplify() const;
   expr simplifyNoTimeout() const;
 
-  expr foldTopLevel() const;
+  expr foldTopLevel(int depth = 1) const;
 
   // replace v1 -> v2
   expr subst(const std::vector<std::pair<expr, expr>> &repls) const;

@@ -494,24 +494,45 @@ ByteType::refines(State &src_s, State &tgt_s, const StateValue &src,
 
 expr ByteType::mkInput(State &s, const char *name,
                        const ParamAttrs &attrs) const {
-  expr var = expr::mkVar(name, bits());
-  auto bytes = s.getMemory().valueToBytes({ expr(var), true }, *this, s);
+  auto bytes = bits() / Byte::bitsByte();
+  if (bytes == 0)
+    return expr::mkUInt(0, bits());
 
-  Pointer p = bytes[0].ptr();
-  s.addAxiom(bytes[0].isPtr().implies(!p.isLocal()));
+  expr var;
+  std::string var_name(name);
+  std::string ptr_name = var_name + ".ptr";
+  expr ptr_var = s.getMemory().mkInput(ptr_name.c_str(), attrs);
+
+  for (unsigned i = 0; i < bytes; ++i) {
+    std::string byte_var_name = var_name + ".byte." + std::to_string(i);
+
+    auto byte_var = expr::mkVar(byte_var_name.c_str(), Byte::bitsByte());
+    auto byte = Byte(s.getMemory(), expr(byte_var));
+    expr ptr_byte = byte.sign()
+      .concat(byte.poisonBit())
+      .concat(ptr_var)
+      .concat(byte.ptrByteoffset());
+
+    ptr_byte = byte_var.bits() >= ptr_byte.bits() ?
+      ptr_byte.concat_zeros(byte_var.bits() - ptr_byte.bits()) :
+      byte_var;
+
+    byte_var = expr::mkIf(
+      byte.isPtr(),
+      ptr_byte,
+      byte_var
+    );
+    var = i == 0 ? byte_var : var.concat(byte_var);
+  }
+
+  assert(var.bits() == bits());
 
   return var;
 }
 
 pair<expr, expr>
 ByteType::mkUndefInput(State &s, const ParamAttrs &attrs) const {
-  expr var = expr::mkUInt(0, bits());
-  auto bytes = s.getMemory().valueToBytes({ expr(var), true }, *this, s);
-
-  Pointer p = bytes[0].ptr();
-  s.addAxiom(bytes[0].isPtr().implies(!p.isLocal()));
-
-  return { var, true };
+  return { expr::mkUInt(0, bits()), true };
 }
 
 void ByteType::printVal(ostream &os, const State &s, const expr &e) const {
