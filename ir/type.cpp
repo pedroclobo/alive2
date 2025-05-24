@@ -554,6 +554,10 @@ ByteType::mkUndefInput(State &s, const ParamAttrs &attrs) const {
   return { expr::mkUInt(0, bits()), true };
 }
 
+StateValue ByteType::mkUndef(State &s) const {
+  return { expr::mkUInt(0, bits()), true };
+}
+
 void ByteType::printVal(ostream &os, const State &s, const expr &e) const {
   int bytes = bits() / Byte::bitsByte();
   for (int i = bytes - 1; i >= 0; --i) {
