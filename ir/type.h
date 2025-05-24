@@ -213,6 +213,7 @@ public:
   std::pair<smt::expr, smt::expr>
     refines(State &src_s, State &tgt_s, const StateValue &src,
             const StateValue &tgt) const override;
+  StateValue mkUndef(State &s) const override;
   smt::expr
     mkInput(State &s, const char *name, const ParamAttrs &attrs) const override;
   std::pair<smt::expr, smt::expr>
