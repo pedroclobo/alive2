@@ -17,6 +17,8 @@ extern unsigned num_globals_src;
 
 extern unsigned num_ptrinputs;
 
+extern unsigned num_byteinputs;
+
 extern unsigned num_inaccessiblememonly_fns;
 
 /// Number of non-constant globals introduced in tgt
