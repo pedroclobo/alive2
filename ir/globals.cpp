@@ -15,6 +15,7 @@ unsigned num_locals_tgt = 128;
 unsigned num_consts_src = 128;
 unsigned num_globals_src = 256;
 unsigned num_ptrinputs = 64;
+unsigned num_byteinputs = 64;
 unsigned num_inaccessiblememonly_fns = 32;
 unsigned num_nonlocals = 256;
 unsigned num_nonlocals_src = 256;

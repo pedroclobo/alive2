@@ -790,6 +790,13 @@ static unsigned num_ptrs(const Type &ty) {
   return n;
 }
 
+static unsigned num_bytes(const Type &ty) {
+  unsigned n = ty.isByteType();
+  if (auto aty = ty.getAsAggregateType())
+    n += aty->numByteElements();
+  return n;
+}
+
 static bool returns_local(const Value &v) {
   // no alias fns return local block
   if (auto call = dynamic_cast<const FnCall*>(&v))
@@ -1012,15 +1019,18 @@ static void calculateAndInitConstants(Transform &t) {
   }
 
   num_ptrinputs = 0;
+  num_byteinputs = 0;
   unsigned num_null_ptrinputs = 0;
   for (auto &arg : t.src.getInputs()) {
     auto n = num_ptrs(arg.getType());
+    auto b = num_bytes(arg.getType());
     auto in = dynamic_cast<const Input*>(&arg);
     if (in && in->hasAttribute(ParamAttrs::ByVal)) {
       num_globals_src += n;
       num_globals += n;
     } else {
       num_ptrinputs += n;
+      num_byteinputs += b;
       if (!in || !in->hasAttribute(ParamAttrs::NonNull))
         num_null_ptrinputs += n;
     }
@@ -1228,7 +1238,8 @@ static void calculateAndInitConstants(Transform &t) {
                   has_ptr_load || has_fncall || has_int2ptr;
 
   num_nonlocals_src = num_globals_src + num_ptrinputs + num_nonlocals_inst_src +
-                      num_inaccessiblememonly_fns + has_null_block;
+                      num_inaccessiblememonly_fns + has_null_block +
+                      num_byteinputs;
 
   null_is_dereferenceable = t.src.getFnAttrs().has(FnAttrs::NullPointerIsValid);
 
