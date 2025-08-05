@@ -1075,6 +1075,7 @@ static void calculateAndInitConstants(Transform &t) {
   bool has_non_exact_bytecast = false;
   bool has_bytecast_to_ptr = false;
   bool has_bytecast_to_int = false;
+  bool has_bitcast_from_ptr_to_byte = false;
 
   auto update_min_vect_sz = [&](const Type &ty) {
     auto elemsz = minVectorElemSize(ty);
@@ -1200,6 +1201,7 @@ static void calculateAndInitConstants(Transform &t) {
       } else if (auto *bc = isCast(ConversionOp::BitCast, i)) {
         auto &t = bc->getType();
         min_access_size = gcd(min_access_size, getCommonAccessSize(t));
+        has_bitcast_from_ptr_to_byte |= hasPtr(bc->getValue().getType()) && hasByte(t);
       } else if (auto *bc = isCast(ConversionOp::ByteCast, i)) {
         auto &t = bc->getType();
         min_access_size = gcd(min_access_size, getCommonAccessSize(t));
@@ -1228,6 +1230,7 @@ static void calculateAndInitConstants(Transform &t) {
   does_ptr_mem_access = has_ptr_load || does_ptr_store ||
                         has_non_exact_bytecast || has_bytecast_to_ptr;
   does_int_mem_access |= has_bytecast_to_int;
+  has_byte_ptr_roundtrip = has_bytecast_to_ptr && has_bitcast_from_ptr_to_byte;
   if (does_any_byte_access && !does_int_mem_access && !does_ptr_mem_access)
     // Use int bytes only
     does_int_mem_access = true;
