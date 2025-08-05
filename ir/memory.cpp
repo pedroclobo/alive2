@@ -2424,10 +2424,14 @@ StateValue Memory::load(const Pointer &ptr, const Type &type, set<expr> &undef,
     return aty->aggregateVals(member_vals);
   }
 
-  expr is_ptr = type.isPtrType();
+  DataType data_type = [](auto &type) {
+    if (type.isByteType())
+      return DATA_ANY;
+    return type.isPtrType() ? DATA_PTR : DATA_INT;
+  }(type);
   auto loadedBytes = load(ptr, bytecount, undef, align, little_endian,
-                          is_ptr.isTrue() ? DATA_PTR : DATA_INT);
-  is_ptr |= loadedBytes[0].isPtr();
+                          data_type);
+  expr is_ptr = expr(type.isPtrType()) || loadedBytes[0].isPtr();
   auto val = bytesToValue(loadedBytes, type);
 
   // partial order reduction for fresh pointers
