@@ -101,4 +101,6 @@ extern unsigned heap_block_alignment;
 
 extern bool has_indirect_fncalls;
 
+extern bool has_byte_ptr_roundtrip;
+
 }
