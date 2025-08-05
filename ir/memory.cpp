@@ -459,7 +459,8 @@ expr Byte::refined(const Byte &other) const {
 
   // fast path: if we didn't do any ptr store, then all ptrs in memory were
   // already there and don't need checking
-  if (!does_ptr_store || is_ptr.isFalse() || (!asm_mode && is_ptr2.isFalse())) {
+  if ((!has_byte_ptr_roundtrip && !does_ptr_store) || is_ptr.isFalse() ||
+      (!asm_mode && is_ptr2.isFalse())) {
     ptr_cnstr = *this == other;
   } else {
     // allow ptr -> int type punning in asm mode
