@@ -829,6 +829,8 @@ expr Memory::AliasSet::mayAlias(bool islocal, const expr &bid) const {
 }
 
 bool Memory::AliasSet::mayAlias(bool islocal, unsigned bid) const {
+  if (islocal && local.size() <= bid)
+   return false;
   return (islocal ? local : non_local)[bid];
 }
 
