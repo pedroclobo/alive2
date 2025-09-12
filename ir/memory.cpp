@@ -199,7 +199,7 @@ static expr disjoint(const expr &begin1, const expr &len1, const expr &align1,
 static expr load_bv(const expr &var, const expr &idx0) {
   auto bw = var.bits();
   if (!bw)
-    return {};
+    return true;
   if (var.isAllOnes())
     return true;
   auto idx = idx0.zextOrTrunc(bw);
