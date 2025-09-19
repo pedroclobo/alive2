@@ -322,7 +322,7 @@ struct TVLegacyPass final : public llvm::ModulePass {
     {
       auto types = verifier.getTypings();
       if (!types) {
-        if (config::quiet)
+        if (!config::quiet)
           t.print(*out);
         *out << "Transformation doesn't verify!\n"
                 "ERROR: program doesn't type check!\n\n";
@@ -337,7 +337,7 @@ struct TVLegacyPass final : public llvm::ModulePass {
         errs.printWarnings(*out);
 
       if (errs) {
-        if (config::quiet)
+        if (!config::quiet)
           t.print(*out);
 
         *out << "Transformation doesn't verify!" <<
