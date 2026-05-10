@@ -647,8 +647,8 @@ static void pad(StateValue &v, unsigned amount, State &s) {
 static vector<Byte> valueToBytes(const StateValue &val, const Type &fromType,
                                  const Memory &mem, State &s) {
   vector<Byte> bytes;
-  if (fromType.isPtrType()) {
-    Pointer p(mem, val.value);
+  auto append_ptr_bytes = [&](const StateValue &ptrval) {
+    Pointer p(mem, ptrval.value);
     unsigned bytesize = bits_program_pointer / bits_byte;
 
     // constant global can't store pointers that alias with local blocks
@@ -658,16 +658,26 @@ static vector<Byte> valueToBytes(const StateValue &val, const Type &fromType,
     }
 
     for (unsigned i = 0; i < bytesize; ++i)
-      bytes.emplace_back(mem, StateValue(expr(p()), expr(val.non_poison)), i);
+      bytes.emplace_back(mem, StateValue(expr(p()), expr(ptrval.non_poison)), i);
+  };
+
+  if (fromType.isPtrType()) {
+    append_ptr_bytes(val);
+  } else if (fromType.isVectorType() &&
+             fromType.getAsAggregateType()->getChild(0).isPtrType()) {
+    auto vty = fromType.getAsAggregateType();
+    for (unsigned i = 0, e = vty->numElementsConst(); i < e; ++i)
+      append_ptr_bytes(vty->extract(val, i));
   } else if (fromType.isByteType() || isByteVector(fromType)) {
-    unsigned bytesize = val.bits() / Byte::bitsByte();
-    assert(bytesize * Byte::bitsByte() == val.bits());
+    StateValue byval = fromType.toInt(s, val);
+    unsigned bytesize = byval.bits() / Byte::bitsByte();
+    assert(bytesize * Byte::bitsByte() == byval.bits());
 
     for (unsigned i = 0; i < bytesize; ++i) {
       bytes.emplace_back(
         mem,
-        val.value.extract((i + 1) * Byte::bitsByte() - 1,
-                          i * Byte::bitsByte())
+        byval.value.extract((i + 1) * Byte::bitsByte() - 1,
+                             i * Byte::bitsByte())
       );
     }
   } else {
@@ -696,7 +706,8 @@ static vector<Byte> valueToBytes(const StateValue &val, const Type &fromType,
 }
 
 static StateValue bytesToValue(const Memory &m, const vector<TypedByte> &bytes,
-                               const Type &toType) {
+                               const Type &toType,
+                               bool is_byte_reinterpretation = false) {
   assert(!bytes.empty());
 
   auto ub_pre = [&](expr &&e) -> expr {
@@ -709,7 +720,23 @@ static StateValue bytesToValue(const Memory &m, const vector<TypedByte> &bytes,
 
   bool is_asm = m.isAsmMode();
 
-  if (toType.isPtrType()) {
+  if (toType.isVectorType() &&
+      toType.getAsAggregateType()->getChild(0).isPtrType()) {
+    auto vty = toType.getAsAggregateType();
+    unsigned ptr_bytes = bits_program_pointer / bits_byte;
+    assert(bytes.size() == vty->numElementsConst() * ptr_bytes);
+
+    vector<StateValue> vals;
+    for (unsigned i = 0, e = vty->numElementsConst(); i < e; ++i) {
+      auto begin = bytes.begin() + i * ptr_bytes;
+      vector<TypedByte> lane_bytes(begin, begin + ptr_bytes);
+      vals.emplace_back(
+        bytesToValue(m, lane_bytes, vty->getChild(i),
+                     is_byte_reinterpretation));
+    }
+    return vty->aggregateVals(vals);
+
+  } else if (toType.isPtrType()) {
     assert(bytes.size() == bits_program_pointer / bits_byte);
     expr loaded_ptr, all_are_ptr;
     // The result is not poison if all of these hold:
@@ -740,7 +767,8 @@ static StateValue bytesToValue(const Memory &m, const vector<TypedByte> &bytes,
       non_poison     &= !b.isPoison();
     }
 
-    non_poison &= ub_pre(all_are_ptr.implies(byte_offset_np));
+    if (!is_byte_reinterpretation)
+      non_poison &= ub_pre(all_are_ptr.implies(byte_offset_np));
 
     if (is_asm)
       non_poison = true;
@@ -760,6 +788,12 @@ static StateValue bytesToValue(const Memory &m, const vector<TypedByte> &bytes,
       Byte byte(bytes[i].byte);
       StateValue v(std::move(byte)(), true);
       val = i == 0 ? std::move(v) : v.concat(val);
+    }
+    if (auto vty = toType.getAsAggregateType()) {
+      vector<StateValue> vals;
+      for (unsigned i = 0, e = vty->numElementsConst(); i < e; ++i)
+        vals.emplace_back(vty->extract(val, i, true));
+      return vty->aggregateVals(vals);
     }
     return val;
 
@@ -782,10 +816,14 @@ static StateValue bytesToValue(const Memory &m, const vector<TypedByte> &bytes,
         expr_np &= b.byteNumber() == byte_number++;
       }
 
-      auto np = ibyteTy.combine_poison(expr_np, b.nonptrNonpoison());
+      auto np = is_byte_reinterpretation
+        ? expr::mkIf(b.isPoison() || !expr_np,
+                     expr::mkUInt(0, b.nonptrNonpoison()),
+                     expr::mkInt(-1, b.nonptrNonpoison()))
+        : ibyteTy.combine_poison(expr_np, b.nonptrNonpoison());
       if (is_asm) {
         np = expr::mkInt(-1, np);
-      } else if (does_ptr_mem_access()) {
+      } else if (does_ptr_mem_access() && !is_byte_reinterpretation) {
         expr np_ptr = expr::mkIf(b.ptrNonpoison() && (bitsize % 8) == 0,
                                  expr::mkInt(-1, np), expr::mkUInt(0, np));
         np = expr::mkIf(b.isPtr(), np_ptr, np);
@@ -2716,6 +2754,17 @@ expr Memory::int2ptr(const expr &val) {
   nextNonlocalBid();
   return
     Pointer::mkPhysical(*this, val.zextOrTrunc(bits_ptr_address)).release();
+}
+
+StateValue Memory::reinterpretValue(const StateValue &val,
+                                    const Type &fromType,
+                                    const Type &toType) {
+  auto bytes = valueToBytes(val, fromType, *this, *state);
+  vector<TypedByte> typed_bytes;
+  typed_bytes.reserve(bytes.size());
+  for (auto &byte : bytes)
+    typed_bytes.push_back({ std::move(byte), DATA_ANY });
+  return bytesToValue(*this, typed_bytes, toType, true);
 }
 
 expr Memory::blockRefined(const Pointer &src, const Pointer &tgt) const {

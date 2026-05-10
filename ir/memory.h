@@ -385,6 +385,8 @@ public:
 
   smt::expr ptr2int(const smt::expr &ptr, bool escape = true);
   smt::expr int2ptr(const smt::expr &val);
+  StateValue reinterpretValue(const StateValue &val, const Type &fromType,
+                              const Type &toType);
 
   std::tuple<smt::expr, Pointer, std::set<smt::expr>>
     refined(const Memory &other, bool fncall,
