@@ -2,6 +2,8 @@
 // Distributed under the MIT license that can be found in the LICENSE file.
 
 #include "ir/constant.h"
+#include "ir/globals.h"
+#include "ir/memory.h"
 #include "smt/expr.h"
 #include "util/compiler.h"
 #include <bit>
@@ -31,9 +33,31 @@ IntConst::IntConst(Type &type, string &&val)
   : Constant(type, string(val)), val(std::move(val)) {}
 
 StateValue IntConst::toSMT(State &s) const {
-  if (auto v = get_if<int64_t>(&val))
-    return { expr::mkInt(*v, bits()), true };
-  return { expr::mkInt(get<string>(val).c_str(), bits()), true };
+  auto mk_int = [&](unsigned bw) {
+    if (auto v = get_if<int64_t>(&val))
+      return expr::mkInt(*v, bw);
+    return expr::mkInt(get<string>(val).c_str(), bw);
+  };
+
+  if (auto ty = getType().getAsByteType()) {
+    unsigned logical_bits = ty->bw();
+    assert(logical_bits % bits_byte == 0);
+    unsigned chunks = logical_bits / bits_byte;
+    auto value = mk_int(logical_bits);
+
+    expr raw;
+    for (unsigned i = 0; i < chunks; ++i) {
+      StateValue data {
+        value.extract((i + 1) * bits_byte - 1, i * bits_byte),
+        true
+      };
+      auto byte = Byte(s.getMemory(), data, logical_bits, i)();
+      raw = i == 0 ? std::move(byte) : byte.concat(raw);
+    }
+    return { std::move(raw), true };
+  }
+
+  return { mk_int(bits()), true };
 }
 
 expr IntConst::getTypeConstraints() const {
@@ -42,7 +66,7 @@ expr IntConst::getTypeConstraints() const {
     min_bits = (*v >= 0 ? 63 : 64) - num_sign_bits(*v);
 
   return Value::getTypeConstraints() &&
-         getType().enforceIntType() &&
+         (getType().enforceIntType() || getType().enforceByteType()) &&
          getType().sizeVar().uge(min_bits);
 }
 
@@ -116,7 +140,8 @@ StateValue ConstantInput::toSMT(State &s) const {
 
 expr ConstantInput::getTypeConstraints() const {
   return Value::getTypeConstraints() &&
-         (getType().enforceIntType() || getType().enforceFloatType());
+         (getType().enforceIntType() || getType().enforceByteType() ||
+          getType().enforceFloatType());
 }
 
 

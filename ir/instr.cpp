@@ -1945,8 +1945,8 @@ expr ConversionOp::getTypeConstraints(const Function &f) const {
         getType().scalarSize().ult(val->getType().scalarSize());
     break;
   case BitCast:
-    c = getType().enforceIntOrFloatOrPtrOrVectorType() &&
-        val->getType().enforceIntOrFloatOrPtrOrVectorType() &&
+    c = getType().enforceIntOrByteOrFloatOrPtrOrVectorType() &&
+        val->getType().enforceIntOrByteOrFloatOrPtrOrVectorType() &&
         getType().enforcePtrOrVectorType() ==
           val->getType().enforcePtrOrVectorType() &&
         getType().sizeVar() == val->getType().sizeVar();

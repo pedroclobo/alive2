@@ -55,6 +55,8 @@ void PoisonValue::print(ostream &os) const {
 }
 
 StateValue PoisonValue::toSMT(State &s) const {
+  if (hasByte(getType()))
+    return getType().mkUndef(s);
   return getType().getDummyValue(false);
 }
 
@@ -256,7 +258,8 @@ StateValue Input::mkInput(State &s, const Type &ty, unsigned child) const {
 
   auto state_val = attrs.encode(s, {std::move(val), expr(true)}, ty, true);
 
-  bool never_poison = config::disable_poison_input || attrs.poisonImpliesUB();
+  bool never_poison = config::disable_poison_input || attrs.poisonImpliesUB() ||
+                      hasByte(ty);
   expr np = expr::mkBoolVar(("np_" + getSMTName(child)).c_str());
   if (never_poison) {
     s.addUB(std::move(np));
