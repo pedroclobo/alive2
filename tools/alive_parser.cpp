@@ -35,6 +35,7 @@ static void error(const char *s, token t) {
 }
 
 static vector<unique_ptr<IntType>> int_types;
+static vector<unique_ptr<ByteType>> byte_types;
 static vector<unique_ptr<PtrType>> pointer_types;
 static FloatType half_type("half", FloatType::Half);
 static FloatType float_type("float", FloatType::Float);
@@ -138,7 +139,7 @@ struct tokenizer_t {
   }
 
   bool isScalarType() {
-    return peek() == INT_TYPE || peek() == HALF ||
+    return peek() == INT_TYPE || peek() == BYTE_TYPE || peek() == HALF ||
            peek() == FLOAT || peek() == DOUBLE || peek() == STAR;
   }
 
@@ -318,6 +319,19 @@ static Type& get_int_type(unsigned size) {
   return *int_types[size].get();
 }
 
+static Type& get_byte_type(unsigned size) {
+  if (size % 8 != 0)
+    error("Byte type size must be a multiple of 8: b" + to_string(size));
+
+  if (size >= byte_types.size())
+    byte_types.resize(size + 1);
+
+  if (!byte_types[size])
+    byte_types[size] = make_unique<ByteType>("b" + to_string(size), size);
+
+  return *byte_types[size].get();
+}
+
 static Type& get_float_i32_type(Type &type) {
   auto p = float_i32_types.try_emplace(&type);
   auto &st = p.first->second;
@@ -349,6 +363,11 @@ static Type& parse_scalar_type() {
     if (yylval.num > 4 * 1024)
       error("Int type too long: " + to_string(yylval.num));
     return get_int_type(yylval.num);
+
+  case BYTE_TYPE:
+    if (yylval.num > 4 * 1024)
+      error("Byte type too long: " + to_string(yylval.num));
+    return get_byte_type(yylval.num);
 
   case HALF:
     return half_type;
@@ -1363,6 +1382,7 @@ static unique_ptr<Instr> parse_instr(string_view name) {
   case SHUFFLEVECTOR:
     return parse_shufflevector(name);
   case INT_TYPE:
+  case BYTE_TYPE:
   case HALF:
   case FLOAT:
   case DOUBLE:
@@ -1513,10 +1533,13 @@ vector<Transform> parse(string_view buf) {
 parser_initializer::parser_initializer() {
   int_types.resize(65);
   int_types[1] = make_unique<IntType>("i1", 1);
+  byte_types.resize(65);
+  byte_types[8] = make_unique<ByteType>("b8", 8);
 }
 
 parser_initializer::~parser_initializer() {
   int_types.clear();
+  byte_types.clear();
   sym_types.clear();
   overflow_aggregate_types.clear();
   float_i32_types.clear();

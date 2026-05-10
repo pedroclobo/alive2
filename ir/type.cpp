@@ -3,6 +3,7 @@
 
 #include "ir/type.h"
 #include "ir/globals.h"
+#include "ir/memory.h"
 #include "ir/state.h"
 #include "smt/solver.h"
 #include "util/compiler.h"
@@ -59,6 +60,7 @@ expr Type::is(unsigned t) const {
 }
 
 expr Type::isInt() const    { return is(SymbolicType::Int); }
+expr Type::isByte() const   { return is(SymbolicType::Byte); }
 expr Type::isFloat() const  { return is(SymbolicType::Float); }
 expr Type::isPtr() const    { return is(SymbolicType::Ptr); }
 expr Type::isArray() const  { return is(SymbolicType::Array); }
@@ -76,6 +78,7 @@ expr Type::operator==(const Type &b) const {
   }
 
   CMP(IntType)
+  CMP(ByteType)
   CMP(FloatType)
   CMP(PtrType)
   CMP(ArrayType)
@@ -93,6 +96,10 @@ expr Type::operator==(const Type &b) const {
 }
 
 bool Type::isIntType() const {
+  return false;
+}
+
+bool Type::isByteType() const {
   return false;
 }
 
@@ -128,6 +135,10 @@ expr Type::enforceIntType(unsigned bits) const {
   return false;
 }
 
+expr Type::enforceByteType(unsigned bits) const {
+  return false;
+}
+
 expr Type::enforceIntOrPtrType() const {
   return enforceIntType() || enforcePtrType();
 }
@@ -149,7 +160,8 @@ expr Type::enforceFloatType() const {
 }
 
 expr Type::enforceScalarType() const {
-  return enforceIntType() || enforcePtrType() || enforceFloatType();
+  return enforceIntType() || enforceByteType() || enforcePtrType() ||
+         enforceFloatType();
 }
 
 expr Type::enforceVectorType() const {
@@ -190,9 +202,15 @@ expr Type::enforceIntOrVectorType(unsigned bits) const {
            [&](auto &ty) { return ty.enforceIntType(bits); });
 }
 
-expr Type::enforceIntOrFloatOrPtrOrVectorType() const {
+expr Type::enforceByteOrVectorType(unsigned bits) const {
   return enforceScalarOrVectorType(
-    [&](auto &ty) { return ty.enforceIntOrPtrType() || ty.enforceFloatType();});
+           [&](auto &ty) { return ty.enforceByteType(bits); });
+}
+
+expr Type::enforceIntOrByteOrFloatOrPtrOrVectorType() const {
+  return enforceScalarOrVectorType(
+    [&](auto &ty) { return ty.enforceIntOrPtrType() || ty.enforceFloatType() ||
+                           ty.enforceByteType();});
 }
 
 expr Type::enforceIntOrPtrOrVectorType() const {
@@ -211,6 +229,10 @@ expr Type::enforcePtrOrVectorType() const {
 }
 
 const IntType* Type::getAsIntType() const {
+  return nullptr;
+}
+
+const ByteType* Type::getAsByteType() const {
   return nullptr;
 }
 
@@ -407,6 +429,127 @@ void IntType::printVal(ostream &os, const State &s, const expr &e) const {
 void IntType::print(ostream &os) const {
   if (bits())
     os << 'i' << bits();
+}
+
+
+unsigned ByteType::bw() const {
+  return bitwidth;
+}
+
+// TODO: support sub-bit accesses
+unsigned ByteType::maxSubBitAccess() const {
+  return 0;
+}
+
+unsigned ByteType::bits() const {
+  assert(bitwidth % 8 == 0);
+  return (bitwidth / 8) * Byte::bitsByte();
+}
+
+StateValue ByteType::getDummyValue(bool non_poison) const {
+  return { expr::mkUInt(0, bits()), true };
+}
+
+expr ByteType::getTypeConstraints() const {
+  auto bw = sizeVar();
+  auto r = bw != 0;
+  if (!defined) {
+    r &= bw.ule(64);
+    r &= bw.urem(expr::mkUInt(8, var_bw_bits)) == 0;
+  }
+  return r;
+}
+
+expr ByteType::sizeVar() const {
+  return defined ? expr::mkUInt(bw(), var_bw_bits) : Type::sizeVar();
+}
+
+expr ByteType::operator==(const ByteType &rhs) const {
+  return sizeVar() == rhs.sizeVar();
+}
+
+void ByteType::fixup(const Model &m) {
+  if (!defined) {
+    bitwidth = m.getUInt(sizeVar());
+    assert(bitwidth % 8 == 0);
+  }
+}
+
+bool ByteType::isByteType() const {
+  return true;
+}
+
+expr ByteType::enforceByteType(unsigned bits) const {
+  return bits ? sizeVar() == bits : true;
+}
+
+const ByteType* ByteType::getAsByteType() const {
+  return this;
+}
+
+pair<expr, expr>
+ByteType::refines(State &src_s, State &tgt_s, const StateValue &src,
+                  const StateValue &tgt) const {
+  expr refined = true;
+  assert(bw() % 8 == 0);
+  unsigned chunks = bw() / 8;
+
+  for (unsigned i = 0; i < chunks; ++i) {
+    unsigned lo = i * Byte::bitsByte();
+    unsigned hi = lo + Byte::bitsByte() - 1;
+
+    TypedByte src_byte {
+      Byte(src_s.getMemory(), src.value.extract(hi, lo)), DATA_ANY
+    };
+    TypedByte tgt_byte {
+      Byte(tgt_s.getMemory(), tgt.value.extract(hi, lo)), DATA_ANY
+    };
+
+    refined &= src_byte.refined(tgt_byte);
+  }
+
+  return { src.non_poison.implies(tgt.non_poison),
+           (src.non_poison && tgt.non_poison).implies(refined) };
+}
+
+StateValue ByteType::mkUndef(State &s) const {
+  expr raw;
+  assert(bw() % 8 == 0);
+  for (unsigned i = 0, e = bw() / 8; i < e; ++i) {
+    auto byte = Byte::mkPoisonByte(s.getMemory())();
+    raw = i == 0 ? std::move(byte) : raw.concat(byte);
+  }
+  return { std::move(raw), true };
+}
+
+expr ByteType::mkInput(State &s, const char *name,
+                       const ParamAttrs &attrs) const {
+  expr raw;
+  string var_name(name);
+
+  assert(bw() % 8 == 0);
+  for (unsigned i = 0, e = bw() / 8; i < e; ++i) {
+    auto byte_name = var_name + ".byte." + to_string(i);
+    auto byte = expr::mkVar(byte_name.c_str(), Byte::bitsByte());
+    raw = i == 0 ? std::move(byte) : byte.concat(raw);
+  }
+  return raw;
+}
+
+void ByteType::printVal(ostream &os, const State &s, const expr &e) const {
+  assert(bw() % 8 == 0);
+  int chunks = bw() / 8;
+  for (int i = chunks - 1; i >= 0; --i) {
+    Byte b(const_cast<State&>(s).returnMemory(),
+           e.extract((i + 1) * Byte::bitsByte() - 1, i * Byte::bitsByte()));
+    os << b;
+    os << (i > 0 ? " | " : "");
+  }
+}
+
+void ByteType::print(ostream &os) const {
+  if (bw())
+    os << 'b' << bw();
 }
 
 
@@ -881,7 +1024,9 @@ StateValue AggregateType::extract(const StateValue &val, unsigned index,
   }
 
   StateValue sv(val.value.extract(h_val, l_val),
-                val.non_poison.extract(h_np, l_np));
+                val.non_poison.isBool()
+                  ? expr(val.non_poison)
+                  : val.non_poison.extract(h_np, l_np));
   return fromInt ? children[index]->fromInt(std::move(sv)) :
                    children[index]->fromBV(std::move(sv));
 }
@@ -1063,6 +1208,17 @@ unsigned AggregateType::numPointerElements() const {
   return count;
 }
 
+unsigned AggregateType::numByteElements() const {
+  unsigned count = 0;
+  for (unsigned i = 0; i < elements; ++i) {
+    if (children[i]->isByteType())
+      count++;
+    else if (auto aty = children[i]->getAsAggregateType())
+      count += aty->numByteElements();
+  }
+  return count;
+}
+
 void AggregateType::printVal(ostream &os, const State &s, const expr &e) const {
   UNREACHABLE();
 }
@@ -1169,6 +1325,7 @@ expr VectorType::getTypeConstraints() const {
   auto &elementTy = *children[0];
   expr r = AggregateType::getTypeConstraints() &&
            (elementTy.enforceIntType() ||
+            elementTy.enforceByteType() ||
             elementTy.enforceFloatType() ||
             elementTy.enforcePtrType()) &&
            numElements() != 0;
@@ -1242,6 +1399,8 @@ SymbolicType::SymbolicType(string &&name, unsigned type_mask)
   : Type(string(name)) {
   if (type_mask & (1 << Int))
     i.emplace(string(name));
+  if (type_mask & (1 << Byte))
+    b.emplace(string(name));
   if (type_mask & (1 << Float))
     f.emplace(string(name));
   if (type_mask & (1 << Ptr))
@@ -1257,6 +1416,7 @@ SymbolicType::SymbolicType(string &&name, unsigned type_mask)
 #define DISPATCH(call, undef)     \
   switch (typ) {                  \
   case Int:       return i->call; \
+  case Byte:      return b->call; \
   case Float:     return f->call; \
   case Ptr:       return p->call; \
   case Array:     return a->call; \
@@ -1270,6 +1430,8 @@ SymbolicType::SymbolicType(string &&name, unsigned type_mask)
   expr ret;                                                               \
   if (i)                                                                  \
     ret = i->call;                                                        \
+  if (b)                                                                  \
+    ret = ret.isValid() ? expr::mkIf(isByte(), b->call, ret) : b->call;   \
   if (f)                                                                  \
     ret = ret.isValid() ? expr::mkIf(isFloat(), f->call, ret) : f->call;  \
   if (p)                                                                  \
@@ -1297,6 +1459,7 @@ StateValue SymbolicType::getDummyValue(bool non_poison) const {
 expr SymbolicType::getTypeConstraints() const {
   expr c(false);
   if (i) c |= isInt()    && i->getTypeConstraints();
+  if (b) c |= isByte()   && b->getTypeConstraints();
   if (f) c |= isFloat()  && f->getTypeConstraints();
   if (p) c |= isPtr()    && p->getTypeConstraints();
   if (a) c |= isArray()  && a->getTypeConstraints();
@@ -1319,6 +1482,8 @@ expr SymbolicType::operator==(const Type &t) const {
 
   if (auto rhs = dynamic_cast<const IntType*>(&t))
     return isInt() && (i ? *i == *rhs : false);
+  if (auto rhs = dynamic_cast<const ByteType*>(&t))
+    return isByte() && (b ? *b == *rhs : false);
   if (auto rhs = dynamic_cast<const FloatType*>(&t))
     return isFloat() && (f ? *f == *rhs : false);
   if (auto rhs = dynamic_cast<const PtrType*>(&t))
@@ -1333,6 +1498,7 @@ expr SymbolicType::operator==(const Type &t) const {
   if (auto rhs = dynamic_cast<const SymbolicType*>(&t)) {
     expr c(false);
     if (i && rhs->i) c |= isInt()    && *i == *rhs->i;
+    if (b && rhs->b) c |= isByte()   && *b == *rhs->b;
     if (f && rhs->f) c |= isFloat()  && *f == *rhs->f;
     if (p && rhs->p) c |= isPtr()    && *p == *rhs->p;
     if (a && rhs->a) c |= isArray()  && *a == *rhs->a;
@@ -1351,6 +1517,7 @@ void SymbolicType::fixup(const Model &m) {
 
   switch (typ) {
   case Int:    i->fixup(m); break;
+  case Byte:   b->fixup(m); break;
   case Float:  f->fixup(m); break;
   case Ptr:    p->fixup(m); break;
   case Array:  a->fixup(m); break;
@@ -1363,6 +1530,10 @@ void SymbolicType::fixup(const Model &m) {
 
 bool SymbolicType::isIntType() const {
   return typ == Int;
+}
+
+bool SymbolicType::isByteType() const {
+  return typ == Byte;
 }
 
 bool SymbolicType::isFloatType() const {
@@ -1387,6 +1558,10 @@ bool SymbolicType::isStructType() const {
 
 expr SymbolicType::enforceIntType(unsigned bits) const {
   return isInt() && (i ? i->enforceIntType(bits) : false);
+}
+
+expr SymbolicType::enforceByteType(unsigned bits) const {
+  return isByte() && (b ? b->enforceByteType(bits) : false);
 }
 
 expr SymbolicType::enforcePtrType() const {
@@ -1416,6 +1591,10 @@ const IntType* SymbolicType::getAsIntType() const {
   return &*i;
 }
 
+const ByteType* SymbolicType::getAsByteType() const {
+  return b ? &*b : nullptr;
+}
+
 const FloatType* SymbolicType::getAsFloatType() const {
   return &*f;
 }
@@ -1423,6 +1602,7 @@ const FloatType* SymbolicType::getAsFloatType() const {
 const AggregateType* SymbolicType::getAsAggregateType() const {
   switch (typ) {
   case Int:
+  case Byte:
   case Float:
   case Ptr:
     return nullptr;
@@ -1512,15 +1692,35 @@ bool hasPtr(const Type &t) {
   return false;
 }
 
+bool hasByte(const Type &t) {
+  if (t.isByteType())
+    return true;
+
+  if (auto agg = t.getAsAggregateType()) {
+    for (unsigned i = 0, e = agg->numElementsConst(); i != e; ++i) {
+      if (hasByte(agg->getChild(i)))
+        return true;
+    }
+  }
+  return false;
+}
+
 bool isNonPtrVector(const Type &t) {
   auto vty = dynamic_cast<const VectorType *>(&t);
   return vty && !vty->getChild(0).isPtrType();
+}
+
+bool isByteVector(const Type &t) {
+  auto vty = dynamic_cast<const VectorType *>(&t);
+  return vty && vty->getChild(0).isByteType();
 }
 
 unsigned minVectorElemSize(const Type &t) {
   if (auto agg = t.getAsAggregateType()) {
     if (t.isVectorType()) {
       auto &elemTy = agg->getChild(0);
+      if (auto byte_ty = elemTy.getAsByteType())
+        return byte_ty->bw();
       return elemTy.isPtrType() ? IR::bits_program_pointer : elemTy.bits();
     }
 
@@ -1540,6 +1740,8 @@ uint64_t getCommonAccessSize(const IR::Type &ty) {
     // non-pointer vectors are stored/loaded all at once
     if (agg->isVectorType()) {
       auto &elemTy = agg->getChild(0);
+      if (auto byte_ty = elemTy.getAsByteType())
+        return divide_up(agg->numElementsConst() * byte_ty->bw(), 8);
       if (!elemTy.isPtrType())
         return divide_up(agg->numElementsConst() * elemTy.bits(), 8);
     }
@@ -1553,6 +1755,8 @@ uint64_t getCommonAccessSize(const IR::Type &ty) {
   }
   if (ty.isPtrType())
     return IR::bits_program_pointer / 8;
+  if (auto byte_ty = ty.getAsByteType())
+    return divide_up(byte_ty->bw(), 8);
   return divide_up(ty.bits(), 8);
 }
 }

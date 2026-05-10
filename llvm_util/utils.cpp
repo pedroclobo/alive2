@@ -32,6 +32,7 @@ unordered_map<const llvm::Value*, string> value_names;
 unsigned value_id_counter = 0; // for %0, %1, etc..
 
 vector<unique_ptr<IntType>> int_types;
+vector<unique_ptr<ByteType>> byte_types;
 vector<unique_ptr<PtrType>> ptr_types;
 FloatType half_type("half", FloatType::Half);
 FloatType float_type("float", FloatType::Float);
@@ -118,12 +119,30 @@ Type* get_int_type(unsigned bits) {
   return int_types[bits].get();
 }
 
+Type* get_byte_type(unsigned bits) {
+  if (bits % 8 != 0) {
+    *out << "ERROR: byte type size must be a multiple of 8: b" << bits << "\n";
+    return nullptr;
+  }
+  if (bits > 16 * 1024) {
+    *out << "ERROR: byte type too large: b" << bits << "\n";
+    return nullptr;
+  }
+  if (bits >= byte_types.size())
+    byte_types.resize(bits + 1);
+  if (!byte_types[bits])
+    byte_types[bits] = make_unique<ByteType>("b" + to_string(bits), bits);
+  return byte_types[bits].get();
+}
+
 Type* llvm_type2alive(const llvm::Type *ty) {
   switch (ty->getTypeID()) {
   case llvm::Type::VoidTyID:
     return &Type::voidTy;
   case llvm::Type::IntegerTyID:
     return get_int_type(cast<llvm::IntegerType>(ty)->getBitWidth());
+  case llvm::Type::ByteTyID:
+    return get_byte_type(cast<llvm::ByteType>(ty)->getBitWidth());
   case llvm::Type::HalfTyID:
     return &half_type;
   case llvm::Type::FloatTyID:
@@ -245,8 +264,8 @@ Type* llvm_type2alive(const llvm::Type *ty) {
 }
 
 
-Value* make_intconst(uint64_t val, int bits) {
-  auto ty = get_int_type(bits);
+Value* make_intconst(uint64_t val, int bits, bool isByte) {
+  auto ty = isByte ? get_byte_type(bits) : get_int_type(bits);
   if (!ty)
     return nullptr;
 
@@ -256,10 +275,10 @@ Value* make_intconst(uint64_t val, int bits) {
   return ret;
 }
 
-IR::Value* make_intconst(const llvm::APInt &val) {
+IR::Value* make_intconst(const llvm::APInt &val, bool isByte) {
   unique_ptr<IntConst> c;
   auto bw = val.getBitWidth();
-  auto *ty = get_int_type(bw);
+  auto *ty = isByte ? get_byte_type(bw) : get_int_type(bw);
   if (!ty)
     return nullptr;
   if (bw <= 64)
@@ -299,11 +318,14 @@ Value* get_operand(llvm::Value *v,
 
   // automatic splat of constant values
   if (auto vty = dyn_cast<llvm::FixedVectorType>(v->getType());
-      vty && isa<llvm::ConstantInt, llvm::ConstantFP>(v)) {
+      vty && isa<llvm::ConstantInt, llvm::ConstantByte, llvm::ConstantFP>(v)) {
     llvm::Value *llvm_splat = nullptr;
     if (auto cnst = dyn_cast<llvm::ConstantInt>(v)) {
       llvm_splat
         = llvm::ConstantInt::get(vty->getElementType(), cnst->getValue());
+    } else if (auto cnst = dyn_cast<llvm::ConstantByte>(v)) {
+      llvm_splat
+        = llvm::ConstantByte::get(vty->getElementType(), cnst->getValue());
     } else if (auto cnst = dyn_cast<llvm::ConstantFP>(v)) {
       llvm_splat
         = llvm::ConstantFP::get(vty->getElementType(), cnst->getValue());
@@ -324,6 +346,10 @@ Value* get_operand(llvm::Value *v,
 
   if (auto cnst = dyn_cast<llvm::ConstantInt>(v)) {
     RETURN_CACHE(make_intconst(cnst->getValue()));
+  }
+
+  if (auto cnst = dyn_cast<llvm::ConstantByte>(v)) {
+    RETURN_CACHE(make_intconst(cnst->getValue(), true));
   }
 
   if (auto cnst = dyn_cast<llvm::ConstantFP>(v)) {
@@ -512,6 +538,8 @@ void init_llvm_utils(ostream &os, const llvm::DataLayout &dataLayout) {
   type_id_counter = 0;
   int_types.resize(65);
   int_types[1] = make_unique<IntType>("i1", 1);
+  byte_types.resize(65);
+  byte_types[8] = make_unique<ByteType>("b8", 8);
   ptr_types.emplace_back(make_unique<PtrType>(0));
   DL = &dataLayout;
 }

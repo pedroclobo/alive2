@@ -1084,6 +1084,7 @@ static void calculateAndInitConstants(Transform &t) {
   uint64_t loc_tgt_alloc_aligned_size = 0;
   unsigned min_vect_elem_sz = 0;
   bool does_mem_access = false;
+  bool has_byte_value = false;
 
   auto update_min_vect_sz = [&](const Type &ty) {
     auto elemsz = minVectorElemSize(ty);
@@ -1108,6 +1109,7 @@ static void calculateAndInitConstants(Transform &t) {
         continue;
 
       has_ptr_arg |= hasPtr(i->getType());
+      has_byte_value |= hasByte(i->getType());
       observes_addresses |= i->hasAttribute(ParamAttrs::Align) ||
                             i->hasAttribute(ParamAttrs::Dereferenceable) ||
                             i->hasAttribute(ParamAttrs::DereferenceableOrNull);
@@ -1146,9 +1148,11 @@ static void calculateAndInitConstants(Transform &t) {
       for (auto op : i.operands()) {
         has_null_pointer |= has_nullptr(op);
         update_min_vect_sz(op->getType());
+        has_byte_value |= hasByte(op->getType());
       }
 
       update_min_vect_sz(i.getType());
+      has_byte_value |= hasByte(i.getType());
 
       if (auto call = dynamic_cast<const FnCall*>(&i)) {
         has_fncall |= true;
@@ -1259,6 +1263,11 @@ static void calculateAndInitConstants(Transform &t) {
   if (does_mem_access && !does_int_load && !does_ptr_load && !does_ptr_store)
     does_int_store = true;
 
+  if (has_byte_value) {
+    does_int_store = true;
+    min_access_size = gcd_opt(min_access_size, 1);
+  }
+
   // account for ptr <-> int implicit conversions through memory
   if (observes_addresses)
     glb_alloc_aligned_size = max_alloc_size = max_access_size = UINT64_MAX;
@@ -1332,6 +1341,8 @@ static void calculateAndInitConstants(Transform &t) {
   if (min_vect_elem_sz > 0)
     bits_poison_per_byte = (min_vect_elem_sz % 8) ? bits_byte :
                              bits_byte / gcd(bits_byte, min_vect_elem_sz);
+  if (has_byte_value)
+    bits_poison_per_byte = bits_byte;
 
   strlen_unroll_cnt = 10;
   memcmp_unroll_cnt = 10;
