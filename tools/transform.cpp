@@ -1208,8 +1208,13 @@ static void calculateAndInitConstants(Transform &t) {
         observes_addresses = true;
 
       } else if (auto *bc = isCast(ConversionOp::BitCast, i)) {
-        auto &t = bc->getType();
-        min_access_size = gcd_opt(min_access_size, getCommonAccessSize(t));
+        auto &dst_ty = bc->getType();
+        auto &src_ty = bc->getValue().getType();
+        min_access_size = gcd_opt(min_access_size, getCommonAccessSize(dst_ty));
+        if (hasByte(dst_ty) || hasByte(src_ty)) {
+          does_ptr_store |= hasPtr(src_ty);
+          does_ptr_load  |= hasPtr(dst_ty);
+        }
 
       } else if (auto *ic = dynamic_cast<const ICmp*>(&i)) {
         observes_addresses |= ic->isPtrCmp() &&
