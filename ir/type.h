@@ -6,6 +6,7 @@
 #include "ir/attrs.h"
 #include "smt/expr.h"
 
+#include <cassert>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -21,6 +22,7 @@ namespace IR {
 static constexpr unsigned max_vector_elements = 65535;
 
 class AggregateType;
+class ByteType;
 class FloatType;
 class IntType;
 class StructType;
@@ -37,6 +39,7 @@ protected:
   smt::expr typeVar() const;
   smt::expr is(unsigned t) const;
   smt::expr isInt() const;
+  smt::expr isByte() const;
   smt::expr isFloat() const;
   smt::expr isPtr() const;
   smt::expr isArray() const;
@@ -45,6 +48,7 @@ protected:
 
 public:
   Type(std::string &&name) : name(std::move(name)) {}
+  virtual unsigned bw() const { return 0; }
   virtual unsigned bits() const = 0;
   virtual unsigned np_bits(bool fromInt) const;
 
@@ -58,6 +62,7 @@ public:
   virtual void fixup(const smt::Model &m) = 0;
 
   virtual bool isIntType() const;
+  virtual bool isByteType() const;
   virtual bool isFloatType() const;
   virtual bool isPtrType() const;
   virtual bool isArrayType() const;
@@ -67,6 +72,7 @@ public:
   bool isVoid() const;
 
   virtual smt::expr enforceIntType(unsigned bits = 0) const;
+  virtual smt::expr enforceByteType(unsigned bits = 0) const;
   smt::expr enforceIntOrPtrType() const;
   virtual smt::expr enforcePtrType() const;
   virtual smt::expr enforceStructType() const;
@@ -86,12 +92,14 @@ public:
     const std::function<smt::expr(const Type&)> &enforceElem) const;
 
   smt::expr enforceIntOrVectorType(unsigned bits = 0) const;
-  smt::expr enforceIntOrFloatOrPtrOrVectorType() const;
+  smt::expr enforceByteOrVectorType(unsigned bits = 0) const;
+  smt::expr enforceIntOrByteOrFloatOrPtrOrVectorType() const;
   smt::expr enforceIntOrPtrOrVectorType() const;
   smt::expr enforceFloatOrVectorType() const;
   smt::expr enforcePtrOrVectorType() const;
 
   virtual const IntType* getAsIntType() const;
+  virtual const ByteType* getAsByteType() const;
   virtual const FloatType* getAsFloatType() const;
   virtual const AggregateType* getAsAggregateType() const;
   virtual const StructType* getAsStructType() const;
@@ -176,6 +184,40 @@ public:
   std::pair<smt::expr, smt::expr>
     refines(State &src_s, State &tgt_s, const StateValue &src,
             const StateValue &tgt) const override;
+  smt::expr
+    mkInput(State &s, const char *name, const ParamAttrs &attrs) const override;
+  void printVal(std::ostream &os, const State &s,
+                const smt::expr &e) const override;
+  void print(std::ostream &os) const override;
+};
+
+
+class ByteType final : public Type {
+  unsigned bitwidth = 0;
+  bool defined = false;
+
+public:
+  ByteType(std::string &&name) : Type(std::move(name)) {}
+  ByteType(std::string &&name, unsigned bitwidth)
+    : Type(std::move(name)), bitwidth(bitwidth), defined(true) {
+    assert(bitwidth && bitwidth % 8 == 0);
+  }
+
+  unsigned bw() const override;
+  unsigned maxSubBitAccess() const override;
+  unsigned bits() const override;
+  IR::StateValue getDummyValue(bool non_poison) const override;
+  smt::expr getTypeConstraints() const override;
+  smt::expr sizeVar() const override;
+  smt::expr operator==(const ByteType &rhs) const;
+  void fixup(const smt::Model &m) override;
+  bool isByteType() const override;
+  smt::expr enforceByteType(unsigned bits = 0) const override;
+  const ByteType* getAsByteType() const override;
+  std::pair<smt::expr, smt::expr>
+    refines(State &src_s, State &tgt_s, const StateValue &src,
+            const StateValue &tgt) const override;
+  StateValue mkUndef(State &s) const override;
   smt::expr
     mkInput(State &s, const char *name, const ParamAttrs &attrs) const override;
   void printVal(std::ostream &os, const State &s,
@@ -319,6 +361,7 @@ public:
   smt::expr
     mkInput(State &s, const char *name, const ParamAttrs &attrs) const override;
   unsigned numPointerElements() const;
+  unsigned numByteElements() const;
   void printVal(std::ostream &os, const State &s,
                 const smt::expr &e) const override;
   const AggregateType* getAsAggregateType() const override;
@@ -374,11 +417,12 @@ public:
 
 class SymbolicType final : public Type {
 public:
-  enum TypeNum { Int, Float, Ptr, Array, Vector, Struct, Undefined };
+  enum TypeNum { Int, Byte, Float, Ptr, Array, Vector, Struct, Undefined };
 
 private:
   TypeNum typ = Undefined;
   std::optional<IntType> i;
+  std::optional<ByteType> b;
   std::optional<FloatType> f;
   std::optional<PtrType> p;
   std::optional<ArrayType> a;
@@ -399,12 +443,14 @@ public:
   smt::expr operator==(const Type &rhs) const;
   void fixup(const smt::Model &m) override;
   bool isIntType() const override;
+  bool isByteType() const override;
   bool isFloatType() const override;
   bool isPtrType() const override;
   bool isArrayType() const override;
   bool isStructType() const override;
   bool isVectorType() const override;
   smt::expr enforceIntType(unsigned bits = 0) const override;
+  smt::expr enforceByteType(unsigned bits = 0) const override;
   smt::expr enforcePtrType() const override;
   smt::expr enforceStructType() const override;
   smt::expr enforceAggregateType(
@@ -413,6 +459,7 @@ public:
   smt::expr enforceVectorType(
     const std::function<smt::expr(const Type&)> &enforceElem) const override;
   const IntType* getAsIntType() const override;
+  const ByteType* getAsByteType() const override;
   const FloatType* getAsFloatType() const override;
   const AggregateType* getAsAggregateType() const override;
   const StructType* getAsStructType() const override;
@@ -439,7 +486,9 @@ public:
 
 
 bool hasPtr(const Type &t);
+bool hasByte(const Type &t);
 bool isNonPtrVector(const Type &t);
+bool isByteVector(const Type &t);
 unsigned minVectorElemSize(const Type &t);
 uint64_t getCommonAccessSize(const Type &ty);
 }
