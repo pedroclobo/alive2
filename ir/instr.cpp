@@ -1865,6 +1865,9 @@ StateValue ConversionOp::toSMT(State &s) const {
     };
     break;
   case BitCast:
+    if (hasByte(getType()) || hasByte(val->getType()))
+      return s.getMemory().reinterpretValue(v, val->getType(), getType());
+
     // NOP: ptr vect -> ptr vect
     if (getType().isVectorType() &&
         getType().getAsAggregateType()->getChild(0).isPtrType())
@@ -1910,6 +1913,27 @@ StateValue ConversionOp::toSMT(State &s) const {
   return scalar(std::move(v), getType());
 }
 
+static expr bitcast_width(const Type &type) {
+  auto scalar_width = [](const Type &type) {
+    return expr::mkIf(type.enforcePtrType(),
+                      expr::mkUInt(bits_program_pointer, type.sizeVar()),
+                      type.sizeVar());
+  };
+
+  if (!type.isVectorType())
+    return scalar_width(type);
+
+  auto vector_type = type.getAsAggregateType();
+  expr total_width = expr::mkUInt(0, type.sizeVar());
+  for (unsigned i = 0, e = vector_type->numElementsConst(); i != e; ++i) {
+    auto &elem_type = vector_type->getChild(i);
+    total_width =
+      expr::mkIf(vector_type->numElements().ugt(i),
+                 total_width + scalar_width(elem_type), total_width);
+  }
+  return total_width;
+}
+
 expr ConversionOp::getTypeConstraints(const Function &f) const {
   expr c;
   switch (op) {
@@ -1927,9 +1951,11 @@ expr ConversionOp::getTypeConstraints(const Function &f) const {
   case BitCast:
     c = getType().enforceIntOrByteOrFloatOrPtrOrVectorType() &&
         val->getType().enforceIntOrByteOrFloatOrPtrOrVectorType() &&
-        getType().enforcePtrOrVectorType() ==
-          val->getType().enforcePtrOrVectorType() &&
-        getType().sizeVar() == val->getType().sizeVar();
+        (getType().enforcePtrOrVectorType() ==
+           val->getType().enforcePtrOrVectorType() ||
+         getType().enforceByteOrVectorType() ||
+         val->getType().enforceByteOrVectorType()) &&
+        bitcast_width(getType()) == bitcast_width(val->getType());
     break;
   case Ptr2Int:
   case Ptr2Addr:
