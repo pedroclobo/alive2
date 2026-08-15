@@ -28,9 +28,9 @@ using namespace util;
 //      + num_consts_src    (constant globals)
 //      + num_globals_src   (all globals incl constant)
 // 3. pointer argument inputs:
-//      has_null_block + num_globals_src + num_ptrinputs
+//      has_null_block + num_globals_src + num_ptrinputs + num_byteinputs
 // 4. nonlocal blocks returned by loads/calls:
-//      has_null_block + num_globals_src + num_ptrinputs + 1 -> ...
+//      has_null_block + num_globals_src + num_ptrinputs + num_byteinputs + 1 -> ...
 // 5. a block reserved for encoding the memory touched by calls:
 //      num_nonlocals_src - num_inaccessiblememonly_fns - has_write_fncall
 // 6. 1 block per inaccessiblememonly
@@ -303,10 +303,19 @@ Byte Byte::mkPoisonByte(const Memory &m) {
   return { m, StateValue(expr::mkUInt(0, bits_byte), false), 0, true };
 }
 
+expr Byte::sign() const {
+  return p.sign();
+}
+
 expr Byte::isPtr() const {
   if (!byte_has_ptr_bit())
     return does_ptr_mem_access();
   return p.sign() == 1;
+}
+
+expr Byte::poisonBit() const {
+  auto bit = p.bits() - 1 - byte_has_ptr_bit();
+  return p.extract(bit, bit);
 }
 
 expr Byte::ptrNonpoison() const {
@@ -1344,7 +1353,7 @@ void Memory::store(const Pointer &ptr,
 
   for (auto &[offset, val] : data) {
     Byte byte(*this, expr(val));
-    escapeLocalPtr(byte.ptrValue(), byte.isPtr() && byte.ptrNonpoison());
+    escapeLocalPtr(byte.ptrValue(), byte.isPtr(), byte.ptrNonpoison());
   }
 
   unsigned bytes = data.size() * (bits_byte/8);
@@ -3067,11 +3076,12 @@ void Memory::escape_helper(const expr &ptr, bool escapes) {
   }
 }
 
-void Memory::escapeLocalPtr(const expr &ptr, const expr &is_ptr) {
-  if (is_ptr.isFalse())
+void Memory::escapeLocalPtr(const expr &ptr, const expr &is_ptr,
+                            const expr &ptr_nonpoison) {
+  if ((is_ptr && ptr_nonpoison).isFalse())
     return;
 
-  escape_helper(ptr, true);
+  escape_helper(ptr.substTopLevel(is_ptr, true, 3), true);
 }
 
 void Memory::observesAddr(const Pointer &ptr, bool escapes) {

@@ -2324,6 +2324,29 @@ expr expr::subst(const expr &from, const expr &to) const {
   return Z3_substitute(ctx(), ast(), 1, &f, &t);
 }
 
+expr expr::substTopLevel(const expr &from, const expr &to, int depth) const {
+  C(from, to);
+
+  if (depth <= 0)
+    return *this;
+
+  if (eq(from))
+    return to;
+
+  expr e;
+  unsigned low, high;
+  if (isExtract(e, high, low))
+    return e.substTopLevel(from, to, depth - 1).extract(high, low);
+
+  expr cond, then, els;
+  if (isIf(cond, then, els))
+    return expr::mkIf(cond.substTopLevel(from, to, depth - 1),
+                      then.substTopLevel(from, to, depth - 1),
+                      els.substTopLevel(from, to, depth - 1));
+
+  return *this;
+}
+
 expr expr::subst_var(const expr &repl) const {
   C(repl);
   auto r = repl();
