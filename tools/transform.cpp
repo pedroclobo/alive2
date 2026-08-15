@@ -1083,6 +1083,7 @@ static void calculateAndInitConstants(Transform &t) {
   does_int_store   = false;
   does_ptr_load    = false;
   does_ptr_store   = false;
+  has_byte_ptr_roundtrip = false;
   observes_addresses  = false;
   has_indirect_fncalls = false;
   has_ptr_arg = false;
@@ -1116,6 +1117,8 @@ static void calculateAndInitConstants(Transform &t) {
       = is_src ? loc_src_alloc_aligned_size : loc_tgt_alloc_aligned_size;
 
     observes_addresses |= fn->getFnAttrs().has(FnAttrs::Asm);
+    bool has_byte_to_ptr_bitcast = false;
+    bool has_ptr_to_byte_bitcast = false;
 
     for (auto &v : fn->getInputs()) {
       auto *i = dynamic_cast<const Input *>(&v);
@@ -1167,7 +1170,6 @@ static void calculateAndInitConstants(Transform &t) {
 
       update_min_vect_sz(i.getType());
       has_byte_value |= hasByte(i.getType());
-
       if (auto call = dynamic_cast<const FnCall*>(&i)) {
         has_fncall |= true;
         auto &attrs = call->getAttributes();
@@ -1228,6 +1230,8 @@ static void calculateAndInitConstants(Transform &t) {
         if (hasByte(dst_ty) || hasByte(src_ty)) {
           does_ptr_store |= hasPtr(src_ty);
           does_ptr_load  |= hasPtr(dst_ty);
+          has_byte_to_ptr_bitcast |= hasByte(src_ty) && hasPtr(dst_ty);
+          has_ptr_to_byte_bitcast |= hasPtr(src_ty) && hasByte(dst_ty);
         }
 
       } else if (auto *ic = dynamic_cast<const ICmp*>(&i)) {
@@ -1237,6 +1241,8 @@ static void calculateAndInitConstants(Transform &t) {
         observes_addresses |= assume->getKind() == Assume::Align;
       }
     }
+    has_byte_ptr_roundtrip |=
+      has_byte_to_ptr_bitcast && has_ptr_to_byte_bitcast;
   }
 
   unsigned num_nonlocals_inst_src;

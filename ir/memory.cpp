@@ -512,7 +512,7 @@ expr TypedByte::refined(const TypedByte &other) const {
 
   // fast path: if we didn't do any ptr store, then all ptrs in memory were
   // already there and don't need checking
-  if (!does_ptr_store || is_ptr.isFalse()) {
+  if ((!has_byte_ptr_roundtrip && !does_ptr_store) || is_ptr.isFalse()) {
     ptr_cnstr = true;
   } else if (!does_int_store) {
     ptr_cnstr = ptrNonpoison().implies(
@@ -2511,7 +2511,7 @@ void Memory::store(const expr &p, const StateValue &v, const Type &type,
 
   vector<pair<unsigned, expr>> to_store;
   store(v, type, 0, to_store);
-  store(ptr, to_store, undef_vars, align);
+  store(ptr, to_store, undef_vars, align, DATA_ANY);
 }
 
 StateValue Memory::load(const Pointer &ptr, const Type &type, set<expr> &undef,
@@ -2822,7 +2822,7 @@ expr Memory::blockValRefined(const Pointer &src, const Memory &tgt,
     TypedByte val  = raw_load(false, bid, offset);
     TypedByte val2 = tgt.raw_load(false, bid, offset);
 
-    if (val.byte.eq(val2.byte))
+    if (!has_byte_ptr_roundtrip && val.byte.eq(val2.byte))
       return true;
 
     undef.insert(mem1.undef.begin(), mem1.undef.end());
