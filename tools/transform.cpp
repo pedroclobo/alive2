@@ -1234,6 +1234,18 @@ static void calculateAndInitConstants(Transform &t) {
           has_ptr_to_byte_bitcast |= hasPtr(src_ty) && hasByte(dst_ty);
         }
 
+      } else if (auto *be = dynamic_cast<const BitExtract*>(&i)) {
+        auto &dst_ty = be->getType();
+        min_access_size = gcd_opt(min_access_size, getCommonAccessSize(dst_ty));
+        does_ptr_load |= hasPtr(dst_ty);
+        has_byte_to_ptr_bitcast |= hasPtr(dst_ty);
+
+      } else if (auto *bi = dynamic_cast<const BitInsert*>(&i)) {
+        auto &src_ty = bi->getValue().getType();
+        min_access_size = gcd_opt(min_access_size, getCommonAccessSize(src_ty));
+        does_ptr_store |= hasPtr(src_ty);
+        has_ptr_to_byte_bitcast |= hasPtr(src_ty);
+
       } else if (auto *ic = dynamic_cast<const ICmp*>(&i)) {
         observes_addresses |= ic->isPtrCmp() &&
                               ic->getPtrCmpMode() == ICmp::INTEGRAL;
