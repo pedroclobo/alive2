@@ -1934,6 +1934,23 @@ static expr bitcast_width(const Type &type) {
   return total_width;
 }
 
+// Number of bits a value of this type occupies as seen by the IR, which is not
+// the number of bits of its SMT encoding for byte and pointer types.
+static unsigned bitcast_width_const(const Type &type) {
+  if (type.isVectorType()) {
+    auto vty = type.getAsAggregateType();
+    unsigned total = 0;
+    for (unsigned i = 0, e = vty->numElementsConst(); i != e; ++i)
+      total += bitcast_width_const(vty->getChild(i));
+    return total;
+  }
+  if (type.isPtrType())
+    return bits_program_pointer;
+  if (auto bty = type.getAsByteType())
+    return bty->bw();
+  return type.bits();
+}
+
 expr ConversionOp::getTypeConstraints(const Function &f) const {
   expr c;
   switch (op) {
@@ -5269,6 +5286,152 @@ expr ShuffleVector::getTypeConstraints(const Function &f) const {
 unique_ptr<Instr> ShuffleVector::dup(Function &f, const string &suffix) const {
   return make_unique<ShuffleVector>(getType(), getName() + suffix,
                                     *v1, *v2, mask);
+}
+
+
+// Byte values track poison per byte, so poison has to be encoded in the value
+// itself: their scalar non-poison flag is dropped when they are stored to
+// memory. ByteType::getDummyValue() cannot do it, as it has no Memory to build
+// poison bytes with.
+static StateValue makePoisonValue(State &s, const Type &type) {
+  return hasByte(type) ? type.mkUndef(s) : type.getDummyValue(false);
+}
+
+// A bit range of `access_bw` bits starting at `offset` can only be accessed in
+// a byte value of `byte_bw` bits if it is byte aligned and in range.
+// TODO: support sub-byte accesses
+static expr byteAccessIsValid(const expr &offset, unsigned access_bw,
+                              unsigned byte_bw) {
+  if (access_bw % 8 != 0)
+    return false;
+
+  auto off = offset.zextOrTrunc(64);
+  return off.urem(expr::mkUInt(8, 64)) == 0 &&
+         (off + expr::mkUInt(access_bw, 64)).ule(byte_bw);
+}
+
+// Offset, in the raw encoding of a byte value, of the byte that holds bit
+// `offset` of that value. Bit 0 is the least significant bit.
+static expr byteAccessShift(const expr &offset, unsigned raw_bits) {
+  return (offset.zextOrTrunc(64).lshr(expr::mkUInt(3, 64)) *
+          expr::mkUInt(Byte::bitsByte(), 64)).zextOrTrunc(raw_bits);
+}
+
+
+vector<Value*> BitExtract::operands() const {
+  return { src, offset };
+}
+
+bool BitExtract::propagatesPoison() const {
+  return false;
+}
+
+bool BitExtract::hasSideEffects() const {
+  return false;
+}
+
+void BitExtract::rauw(const Value &what, Value &with) {
+  RAUW(src);
+  RAUW(offset);
+}
+
+void BitExtract::print(ostream &os) const {
+  os << getName() << " = bitextract " << print_type(getType(), "", ", ")
+     << *src << ", " << *offset;
+}
+
+StateValue BitExtract::toSMT(State &s) const {
+  auto &sv = s[*src].value;
+  auto &[ov, onp] = s[*offset];
+  unsigned src_bw = src->getType().getAsByteType()->bw();
+  unsigned bw = bitcast_width_const(getType());
+
+  // TODO: support sub-byte accesses
+  if (bw % 8 != 0)
+    return makePoisonValue(s, getType());
+
+  expr slice = sv.lshr(byteAccessShift(ov, sv.bits()))
+                 .zextOrTrunc((bw / 8) * Byte::bitsByte());
+
+  ByteType slice_ty("", bw);
+  auto ret = s.getMemory().reinterpretValue({ std::move(slice), true },
+                                            slice_ty, getType());
+
+  expr ok = onp && byteAccessIsValid(ov, bw, src_bw);
+  return StateValue::mkIf(ok, ret, makePoisonValue(s, getType()));
+}
+
+expr BitExtract::getTypeConstraints(const Function &f) const {
+  return Value::getTypeConstraints() &&
+         getType().enforceScalarType() &&
+         src->getType().enforceByteType() &&
+         bitcast_width(getType()).ule(bitcast_width(src->getType())) &&
+         offset->getType().enforceIntType(32);
+}
+
+unique_ptr<Instr> BitExtract::dup(Function &f, const string &suffix) const {
+  return make_unique<BitExtract>(getType(), getName() + suffix, *src, *offset);
+}
+
+
+vector<Value*> BitInsert::operands() const {
+  return { base, val, offset };
+}
+
+bool BitInsert::propagatesPoison() const {
+  return false;
+}
+
+bool BitInsert::hasSideEffects() const {
+  return false;
+}
+
+void BitInsert::rauw(const Value &what, Value &with) {
+  RAUW(base);
+  RAUW(val);
+  RAUW(offset);
+}
+
+void BitInsert::print(ostream &os) const {
+  os << getName() << " = bitinsert " << *base << ", " << *val << ", " << *offset;
+}
+
+StateValue BitInsert::toSMT(State &s) const {
+  auto &bv = s[*base].value;
+  auto &[ov, onp] = s[*offset];
+  unsigned base_bw = base->getType().getAsByteType()->bw();
+  unsigned bw = bitcast_width_const(val->getType());
+
+  // TODO: support sub-byte accesses
+  if (bw % 8 != 0)
+    return makePoisonValue(s, getType());
+
+  ByteType slice_ty("", bw);
+  auto ins = s.getMemory().reinterpretValue(s[*val], val->getType(), slice_ty);
+
+  unsigned raw_bits = bv.bits();
+  expr shift = byteAccessShift(ov, raw_bits);
+  expr mask  = expr::mkInt(-1, (bw / 8) * Byte::bitsByte())
+                 .zextOrTrunc(raw_bits) << shift;
+  expr value = (bv & ~mask) | (ins.value.zextOrTrunc(raw_bits) << shift);
+
+  expr ok = onp && byteAccessIsValid(ov, bw, base_bw);
+  return StateValue::mkIf(ok, { std::move(value), std::move(ins.non_poison) },
+                          makePoisonValue(s, getType()));
+}
+
+expr BitInsert::getTypeConstraints(const Function &f) const {
+  return Value::getTypeConstraints() &&
+         getType() == base->getType() &&
+         base->getType().enforceByteType() &&
+         val->getType().enforceScalarType() &&
+         bitcast_width(val->getType()).ule(bitcast_width(base->getType())) &&
+         offset->getType().enforceIntType(32);
+}
+
+unique_ptr<Instr> BitInsert::dup(Function &f, const string &suffix) const {
+  return make_unique<BitInsert>(getType(), getName() + suffix, *base, *val,
+                                *offset);
 }
 
 

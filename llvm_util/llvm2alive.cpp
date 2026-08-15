@@ -1348,6 +1348,16 @@ public:
       make_unique<ShuffleVector>(*ty, value_name(i), *a, *b, std::move(mask));
   }
 
+  RetTy visitBitExtractInst(llvm::BitExtractInst &i) {
+    PARSE_BINOP();
+    return make_unique<BitExtract>(*ty, value_name(i), *a, *b);
+  }
+
+  RetTy visitBitInsertInst(llvm::BitInsertInst &i) {
+    PARSE_TRIOP();
+    return make_unique<BitInsert>(*ty, value_name(i), *a, *b, *c);
+  }
+
   RetTy visitVAArg(llvm::VAArgInst &i) {
     PARSE_UNOP();
     return make_unique<VaArg>(*ty, value_name(i), *val);

@@ -1348,6 +1348,42 @@ public:
 };
 
 
+class BitExtract final : public Instr {
+  Value *src, *offset;
+public:
+  BitExtract(Type &type, std::string &&name, Value &src, Value &offset)
+    : Instr(type, std::move(name)), src(&src), offset(&offset) {}
+  std::vector<Value*> operands() const override;
+  bool propagatesPoison() const override;
+  bool hasSideEffects() const override;
+  void rauw(const Value &what, Value &with) override;
+  void print(std::ostream &os) const override;
+  StateValue toSMT(State &s) const override;
+  smt::expr getTypeConstraints(const Function &f) const override;
+  std::unique_ptr<Instr>
+    dup(Function &f, const std::string &suffix) const override;
+};
+
+
+class BitInsert final : public Instr {
+  Value *base, *val, *offset;
+public:
+  BitInsert(Type &type, std::string &&name, Value &base, Value &val,
+            Value &offset)
+    : Instr(type, std::move(name)), base(&base), val(&val), offset(&offset) {}
+  Value& getValue() const { return *val; }
+  std::vector<Value*> operands() const override;
+  bool propagatesPoison() const override;
+  bool hasSideEffects() const override;
+  void rauw(const Value &what, Value &with) override;
+  void print(std::ostream &os) const override;
+  StateValue toSMT(State &s) const override;
+  smt::expr getTypeConstraints(const Function &f) const override;
+  std::unique_ptr<Instr>
+    dup(Function &f, const std::string &suffix) const override;
+};
+
+
 const ConversionOp *isCast(ConversionOp::Op op, const Value &v);
 Value *isNoOp(const Value &v);
 }

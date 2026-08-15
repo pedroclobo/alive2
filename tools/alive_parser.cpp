@@ -1239,6 +1239,32 @@ static unique_ptr<Instr> parse_insertelement(string_view name) {
   return make_unique<InsertElement>(get_sym_type(), string(name), a, e, idx);
 }
 
+static unique_ptr<Instr> parse_bitextract(string_view name) {
+  // %p = bitextract ty, bty %src, i32 %offset
+  auto &ty = parse_type();
+  parse_comma();
+  auto &ty_src = parse_type();
+  auto &src = parse_operand(ty_src);
+  parse_comma();
+  auto &ty_offset = parse_type();
+  auto &offset = parse_operand(ty_offset);
+  return make_unique<BitExtract>(ty, string(name), src, offset);
+}
+
+static unique_ptr<Instr> parse_bitinsert(string_view name) {
+  // %p = bitinsert bty %base, ty %val, i32 %offset
+  auto &ty_base = parse_type();
+  auto &base = parse_operand(ty_base);
+  parse_comma();
+  auto &ty_val = parse_type();
+  auto &val = parse_operand(ty_val);
+  parse_comma();
+  auto &ty_offset = parse_type();
+  auto &offset = parse_operand(ty_offset);
+  return make_unique<BitInsert>(get_sym_type(), string(name), base, val,
+                                offset);
+}
+
 static unique_ptr<Instr> parse_shufflevector(string_view name) {
   // %p = shufflevector ty %a, ty %b, ty %c
   auto &ty_a = parse_type();
@@ -1381,6 +1407,10 @@ static unique_ptr<Instr> parse_instr(string_view name) {
     return parse_insertelement(name);
   case SHUFFLEVECTOR:
     return parse_shufflevector(name);
+  case BITEXTRACT:
+    return parse_bitextract(name);
+  case BITINSERT:
+    return parse_bitinsert(name);
   case INT_TYPE:
   case BYTE_TYPE:
   case HALF:
