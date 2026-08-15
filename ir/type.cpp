@@ -526,14 +526,36 @@ expr ByteType::mkInput(State &s, const char *name,
                        const ParamAttrs &attrs) const {
   expr raw;
   string var_name(name);
+  bool ptr_access = does_ptr_load || does_ptr_store;
 
   assert(bw() % 8 == 0);
   for (unsigned i = 0, e = bw() / 8; i < e; ++i) {
     auto byte_name = var_name + ".byte." + to_string(i);
     auto byte = expr::mkVar(byte_name.c_str(), Byte::bitsByte());
+    if (ptr_access) {
+      auto ptr_name = var_name + ".ptr." + to_string(i);
+      auto ptr_var = s.getMemory().mkInput(ptr_name.c_str(), attrs);
+      Byte byte_repr(s.getMemory(), expr(byte));
+      expr ptr_byte = byte_repr.sign()
+        .concat(byte_repr.poisonBit())
+        .concat(ptr_var)
+        .concat(byte_repr.ptrByteoffset());
+
+      ptr_byte = byte.bits() >= ptr_byte.bits()
+        ? ptr_byte.concat_zeros(byte.bits() - ptr_byte.bits())
+        : byte;
+
+      byte = expr::mkIf(byte_repr.isPtr(), ptr_byte, byte);
+    }
     raw = i == 0 ? std::move(byte) : byte.concat(raw);
   }
   return raw;
+}
+
+pair<expr, expr>
+ByteType::mkUndefInput(State &, const ParamAttrs &) const {
+  auto var = expr::mkFreshVar("undef", expr::mkUInt(0, bits()));
+  return { var, var };
 }
 
 void ByteType::printVal(ostream &os, const State &s, const expr &e) const {

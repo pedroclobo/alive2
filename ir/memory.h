@@ -61,7 +61,9 @@ public:
 
   static Byte mkPoisonByte(const Memory &m);
 
+  smt::expr sign() const;
   smt::expr isPtr() const;
+  smt::expr poisonBit() const;
   smt::expr ptrNonpoison() const;
   Pointer ptr() const;
   smt::expr ptrValue() const;
@@ -393,7 +395,8 @@ public:
             const std::vector<PtrInput> *set_ptrs = nullptr,
             const std::vector<PtrInput> *set_ptrs_other = nullptr) const;
 
-  void escapeLocalPtr(const smt::expr &ptr, const smt::expr &is_ptr);
+  void escapeLocalPtr(const smt::expr &ptr, const smt::expr &is_ptr,
+                      const smt::expr &ptr_nonpoison);
   void observesAddr(const Pointer &ptr, bool escapes);
 
   smt::expr returnChecks() const;
