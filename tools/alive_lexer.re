@@ -216,6 +216,8 @@ space+ {
 "nuw" { return NUW; }
 "exact" { return EXACT; }
 "bitcast" { return BITCAST; }
+"bitextract" { return BITEXTRACT; }
+"bitinsert" { return BITINSERT; }
 "sext" { return SEXT; }
 "zext" { return ZEXT; }
 "trunc" { return TRUNC; }
