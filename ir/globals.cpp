@@ -50,6 +50,7 @@ bool does_int_load = true;
 bool does_int_store = true;
 bool does_ptr_load = true;
 bool does_ptr_store = true;
+bool has_byte_ptr_roundtrip = true;
 unsigned heap_block_alignment = 8;
 bool has_indirect_fncalls = true;
 

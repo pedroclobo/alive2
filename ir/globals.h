@@ -97,6 +97,7 @@ extern bool does_int_load;
 extern bool does_int_store;
 extern bool does_ptr_load;
 extern bool does_ptr_store;
+extern bool has_byte_ptr_roundtrip;
 
 extern unsigned heap_block_alignment;
 
