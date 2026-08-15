@@ -499,10 +499,10 @@ ByteType::refines(State &src_s, State &tgt_s, const StateValue &src,
     unsigned hi = lo + Byte::bitsByte() - 1;
 
     TypedByte src_byte {
-      Byte(src_s.getMemory(), src.value.extract(hi, lo)), DATA_ANY
+      Byte(src_s.returnMemory(), src.value.extract(hi, lo)), DATA_ANY
     };
     TypedByte tgt_byte {
-      Byte(tgt_s.getMemory(), tgt.value.extract(hi, lo)), DATA_ANY
+      Byte(tgt_s.returnMemory(), tgt.value.extract(hi, lo)), DATA_ANY
     };
 
     refined &= src_byte.refined(tgt_byte);
