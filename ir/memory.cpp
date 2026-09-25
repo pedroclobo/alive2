@@ -752,7 +752,9 @@ static StateValue bytesToValue(const Memory &m, const vector<TypedByte> &bytes,
     // (1) There's no poison byte, and they are all pointer bytes
     // (2) All of the bytes have the same information
     // (3) Byte offsets should be correct
-    // Integers are converted to pointers without provenance
+    // Integers are converted to pointers without provenance. For byte
+    // reinterpretation, pointer bytes that don't form a single pointer in order
+    // are treated as integers.
     expr non_poison = true;
     expr byte_offset_np = true;
     expr int_cast_offset;
@@ -785,7 +787,11 @@ static StateValue bytesToValue(const Memory &m, const vector<TypedByte> &bytes,
     Pointer auto_cast(m, expr::mkUInt(0, bits_for_bid),
                       int_cast_offset.zextOrTrunc(bits_for_offset));
 
-    return { expr::mkIf(all_are_ptr, loaded_ptr, auto_cast()),
+    expr keep_ptr = all_are_ptr;
+    if (is_byte_reinterpretation)
+      keep_ptr &= byte_offset_np;
+
+    return { expr::mkIf(keep_ptr, loaded_ptr, auto_cast()),
              std::move(non_poison) };
 
   } else if (toType.isByteType() || isByteVector(toType)) {
