@@ -675,8 +675,9 @@ static vector<Byte> valueToBytes(const StateValue &val, const Type &fromType,
   } else if (fromType.isVectorType() &&
              fromType.getAsAggregateType()->getChild(0).isPtrType()) {
     auto vty = fromType.getAsAggregateType();
+    // Bytes are ordered by significance, so on big-endian lane 0 goes last.
     for (unsigned i = 0, e = vty->numElementsConst(); i < e; ++i)
-      append_ptr_bytes(vty->extract(val, i));
+      append_ptr_bytes(vty->extract(val, little_endian ? i : e - i - 1));
   } else if (fromType.isByteType() || isByteVector(fromType)) {
     StateValue byval = fromType.toInt(s, val);
     unsigned bytesize = byval.bits() / Byte::bitsByte();
@@ -736,8 +737,10 @@ static StateValue bytesToValue(const Memory &m, const vector<TypedByte> &bytes,
     assert(bytes.size() == vty->numElementsConst() * ptr_bytes);
 
     vector<StateValue> vals;
+    // Bytes are ordered by significance, so on big-endian lane 0 comes last.
     for (unsigned i = 0, e = vty->numElementsConst(); i < e; ++i) {
-      auto begin = bytes.begin() + i * ptr_bytes;
+      unsigned lane = little_endian ? i : e - i - 1;
+      auto begin = bytes.begin() + lane * ptr_bytes;
       vector<TypedByte> lane_bytes(begin, begin + ptr_bytes);
       vals.emplace_back(
         bytesToValue(m, lane_bytes, vty->getChild(i),
