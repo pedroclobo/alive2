@@ -652,6 +652,31 @@ const expr& State::getWellDefinedPtr(const Value &val) {
   return getAndAddPoisonUB(val, true, true).value;
 }
 
+// Bytes are frozen per bit: poison bits become fresh bits. A poison pointer
+// byte becomes a fresh integer byte, as freeze can't create provenance.
+static StateValue freeze_bytes(State &s, const StateValue &v) {
+  auto &m = s.getMemory();
+  expr raw;
+  for (unsigned i = 0, e = v.value.bits() / Byte::bitsByte(); i != e; ++i) {
+    expr byte = v.value.extract((i + 1) * Byte::bitsByte() - 1,
+                                i * Byte::bitsByte());
+    Byte b(m, expr(byte));
+
+    expr nondet = expr::mkFreshVar("nondet", expr::mkUInt(0, bits_byte));
+    s.addQuantVar(nondet);
+
+    expr np = expr::mkIf(b.isPtr(), expr::mkUInt(0, bits_poison_per_byte),
+                         b.nonptrNonpoison());
+    Byte frozen(m, { (b.nonptrValue() & np) | (nondet & ~np), true },
+                bits_byte, 0);
+
+    expr out = expr::mkIf(b.isPtr() && b.ptrNonpoison(), byte,
+                          std::move(frozen)());
+    raw = i == 0 ? std::move(out) : out.concat(raw);
+  }
+  return { std::move(raw), true };
+}
+
 StateValue State::freeze(const Type &ty, const StateValue &v) {
   if (auto agg = ty.getAsAggregateType()) {
     vector<StateValue> vals;
@@ -662,6 +687,9 @@ StateValue State::freeze(const Type &ty, const StateValue &v) {
     }
     return agg->aggregateVals(vals);
   }
+
+  if (ty.isByteType())
+    return freeze_bytes(*this, foldBytePoison(*this, ty, v));
 
   if (v.non_poison.isTrue())
     return v;
