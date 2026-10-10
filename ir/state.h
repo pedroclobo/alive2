@@ -311,6 +311,7 @@ public:
   StateValue
     addFnCall(const std::string &name, std::vector<StateValue> &&inputs,
               std::vector<PtrInput> &&ptr_inputs,
+              std::vector<smt::expr> &&byte_inputs,
               const Type &out_type,
               StateValue &&ret_arg, const Type *ret_arg_ty,
               std::vector<StateValue> &&ret_args, const FnAttrs &attrs,

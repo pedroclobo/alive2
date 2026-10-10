@@ -2706,13 +2706,15 @@ static void check_can_store(State &s, const expr &p0) {
 static void unpack_inputs(State &s, Value &argv, Type &ty,
                           const ParamAttrs &argflag, StateValue value,
                           StateValue value2, vector<StateValue> &inputs,
-                          vector<PtrInput> &ptr_inputs, unsigned idx) {
+                          vector<PtrInput> &ptr_inputs,
+                          vector<expr> &byte_inputs, unsigned idx) {
   if (auto agg = ty.getAsAggregateType()) {
     for (unsigned i = 0, e = agg->numElementsConst(); i != e; ++i) {
       if (agg->isPadding(i))
         continue;
       unpack_inputs(s, argv, agg->getChild(i), argflag, agg->extract(value, i),
-                    agg->extract(value2, i), inputs, ptr_inputs, idx);
+                    agg->extract(value2, i), inputs, ptr_inputs, byte_inputs,
+                    idx);
     }
     return;
   }
@@ -2728,6 +2730,9 @@ static void unpack_inputs(State &s, Value &argv, Type &ty,
                               argflag.has(ParamAttrs::NoWrite),
                               argflag.has(ParamAttrs::NoCapture));
     } else {
+      // pointers held in byte values escape like pointer arguments
+      if (ty.isByteType())
+        byte_inputs.emplace_back(foldBytePoison(s, ty, value).value);
       inputs.emplace_back(std::move(value));
     }
   };
@@ -2768,6 +2773,7 @@ StateValue FnCall::toSMT(State &s) const {
 
   vector<StateValue> inputs;
   vector<PtrInput> ptr_inputs;
+  vector<expr> byte_inputs;
 
   unsigned indirect_hash = 0;
   auto ptr = fnptr;
@@ -2829,7 +2835,7 @@ StateValue FnCall::toSMT(State &s) const {
     }
 
     unpack_inputs(s, *arg, arg->getType(), flags, std::move(sv), std::move(sv2),
-                  inputs, ptr_inputs, i);
+                  inputs, ptr_inputs, byte_inputs, i);
     fnName_mangled << '#' << arg->getType();
   }
   fnName_mangled << '!' << getType();
@@ -2924,7 +2930,8 @@ StateValue FnCall::toSMT(State &s) const {
   }
 
   auto ret = s.addFnCall(std::move(fnName_mangled).str(), std::move(inputs),
-                         std::move(ptr_inputs), getType(), std::move(ret_val),
+                         std::move(ptr_inputs), std::move(byte_inputs),
+                         getType(), std::move(ret_val),
                          ret_arg_ty, std::move(ret_vals), attrs, indirect_hash);
 
   return isVoid() ? StateValue()

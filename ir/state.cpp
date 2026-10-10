@@ -1117,7 +1117,7 @@ expr State::FnCallOutput::refines(const FnCallOutput &rhs,
 
 StateValue
 State::addFnCall(const string &name, vector<StateValue> &&inputs,
-                 vector<PtrInput> &&ptr_inputs,
+                 vector<PtrInput> &&ptr_inputs, vector<expr> &&byte_inputs,
                  const Type &out_type, StateValue &&ret_arg,
                  const Type *ret_arg_ty, vector<StateValue> &&ret_args,
                  const FnAttrs &attrs, unsigned indirect_call_hash) {
@@ -1192,6 +1192,9 @@ State::addFnCall(const string &name, vector<StateValue> &&inputs,
     for (auto &v : ptr_inputs) {
       if (!(v.byval == 0).isFalse() && !v.nocapture.isTrue())
         memory.escapeLocalPtr(v.val.value, true, v.val.non_poison);
+    }
+    for (auto &v : byte_inputs) {
+      memory.escapeBytes(v);
     }
   }
 

@@ -397,6 +397,7 @@ public:
 
   void escapeLocalPtr(const smt::expr &ptr, const smt::expr &is_ptr,
                       const smt::expr &ptr_nonpoison);
+  void escapeBytes(const smt::expr &bytes);
   void observesAddr(const Pointer &ptr, bool escapes);
 
   smt::expr returnChecks() const;

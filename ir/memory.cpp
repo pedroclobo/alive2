@@ -3099,6 +3099,14 @@ void Memory::escapeLocalPtr(const expr &ptr, const expr &is_ptr,
   escape_helper(ptr.substTopLevel(is_ptr, true, 3), true);
 }
 
+void Memory::escapeBytes(const expr &bytes) {
+  for (unsigned i = 0, e = bytes.bits() / Byte::bitsByte(); i != e; ++i) {
+    Byte byte(*this, bytes.extract((i + 1) * Byte::bitsByte() - 1,
+                                   i * Byte::bitsByte()));
+    escapeLocalPtr(byte.ptrValue(), byte.isPtr(), byte.ptrNonpoison());
+  }
+}
+
 void Memory::observesAddr(const Pointer &ptr, bool escapes) {
   escape_helper(ptr(), escapes);
 }
