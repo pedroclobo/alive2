@@ -511,8 +511,9 @@ expr TypedByte::refined(const TypedByte &other) const {
   expr ptr_cnstr;
 
   // fast path: if we didn't do any ptr store, then all ptrs in memory were
-  // already there and don't need checking
-  if ((!has_byte_ptr_roundtrip && !does_ptr_store) || is_ptr.isFalse()) {
+  // already there and don't need checking. Byte values can move pointer bytes
+  // and strip their provenance without a ptr store.
+  if ((!has_byte_values && !does_ptr_store) || is_ptr.isFalse()) {
     ptr_cnstr = true;
   } else if (!does_int_store) {
     ptr_cnstr = ptrNonpoison().implies(
@@ -2832,7 +2833,7 @@ expr Memory::blockValRefined(const Pointer &src, const Memory &tgt,
     TypedByte val  = raw_load(false, bid, offset);
     TypedByte val2 = tgt.raw_load(false, bid, offset);
 
-    if (!has_byte_ptr_roundtrip && val.byte.eq(val2.byte))
+    if (!has_byte_values && val.byte.eq(val2.byte))
       return true;
 
     undef.insert(mem1.undef.begin(), mem1.undef.end());

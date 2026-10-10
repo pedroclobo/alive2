@@ -1083,7 +1083,7 @@ static void calculateAndInitConstants(Transform &t) {
   does_int_store   = false;
   does_ptr_load    = false;
   does_ptr_store   = false;
-  has_byte_ptr_roundtrip = false;
+  has_byte_values = false;
   observes_addresses  = false;
   has_indirect_fncalls = false;
   has_ptr_arg = false;
@@ -1099,7 +1099,6 @@ static void calculateAndInitConstants(Transform &t) {
   uint64_t loc_tgt_alloc_aligned_size = 0;
   unsigned min_vect_elem_sz = 0;
   bool does_mem_access = false;
-  bool has_byte_value = false;
 
   auto update_min_vect_sz = [&](const Type &ty) {
     auto elemsz = minVectorElemSize(ty);
@@ -1117,8 +1116,6 @@ static void calculateAndInitConstants(Transform &t) {
       = is_src ? loc_src_alloc_aligned_size : loc_tgt_alloc_aligned_size;
 
     observes_addresses |= fn->getFnAttrs().has(FnAttrs::Asm);
-    bool has_byte_to_ptr_bitcast = false;
-    bool has_ptr_to_byte_bitcast = false;
 
     for (auto &v : fn->getInputs()) {
       auto *i = dynamic_cast<const Input *>(&v);
@@ -1126,7 +1123,7 @@ static void calculateAndInitConstants(Transform &t) {
         continue;
 
       has_ptr_arg |= hasPtr(i->getType());
-      has_byte_value |= hasByte(i->getType());
+      has_byte_values |= hasByte(i->getType());
       observes_addresses |= i->hasAttribute(ParamAttrs::Align) ||
                             i->hasAttribute(ParamAttrs::Dereferenceable) ||
                             i->hasAttribute(ParamAttrs::DereferenceableOrNull);
@@ -1165,11 +1162,11 @@ static void calculateAndInitConstants(Transform &t) {
       for (auto op : i.operands()) {
         has_null_pointer |= has_nullptr(op);
         update_min_vect_sz(op->getType());
-        has_byte_value |= hasByte(op->getType());
+        has_byte_values |= hasByte(op->getType());
       }
 
       update_min_vect_sz(i.getType());
-      has_byte_value |= hasByte(i.getType());
+      has_byte_values |= hasByte(i.getType());
       if (auto call = dynamic_cast<const FnCall*>(&i)) {
         has_fncall |= true;
         auto &attrs = call->getAttributes();
@@ -1232,8 +1229,6 @@ static void calculateAndInitConstants(Transform &t) {
           does_ptr_load  |= hasPtr(dst_ty);
           // bytes read as ints or ptrs behave like an int load or inttoptr
           observes_addresses |= hasByte(src_ty) && !hasByte(dst_ty);
-          has_byte_to_ptr_bitcast |= hasByte(src_ty) && hasPtr(dst_ty);
-          has_ptr_to_byte_bitcast |= hasPtr(src_ty) && hasByte(dst_ty);
         }
 
       } else if (auto *be = dynamic_cast<const BitExtract*>(&i)) {
@@ -1241,13 +1236,11 @@ static void calculateAndInitConstants(Transform &t) {
         min_access_size = gcd_opt(min_access_size, getCommonAccessSize(dst_ty));
         does_ptr_load |= hasPtr(dst_ty);
         observes_addresses |= !hasByte(dst_ty);
-        has_byte_to_ptr_bitcast |= hasPtr(dst_ty);
 
       } else if (auto *bi = dynamic_cast<const BitInsert*>(&i)) {
         auto &src_ty = bi->getValue().getType();
         min_access_size = gcd_opt(min_access_size, getCommonAccessSize(src_ty));
         does_ptr_store |= hasPtr(src_ty);
-        has_ptr_to_byte_bitcast |= hasPtr(src_ty);
 
       } else if (auto *ic = dynamic_cast<const ICmp*>(&i)) {
         observes_addresses |= ic->isPtrCmp() &&
@@ -1256,8 +1249,6 @@ static void calculateAndInitConstants(Transform &t) {
         observes_addresses |= assume->getKind() == Assume::Align;
       }
     }
-    has_byte_ptr_roundtrip |=
-      has_byte_to_ptr_bitcast && has_ptr_to_byte_bitcast;
   }
 
   unsigned num_nonlocals_inst_src;
@@ -1304,7 +1295,7 @@ static void calculateAndInitConstants(Transform &t) {
   if (does_mem_access && !does_int_load && !does_ptr_load && !does_ptr_store)
     does_int_store = true;
 
-  if (has_byte_value) {
+  if (has_byte_values) {
     does_int_store = true;
     min_access_size = gcd_opt(min_access_size, 1);
   }
@@ -1382,7 +1373,7 @@ static void calculateAndInitConstants(Transform &t) {
   if (min_vect_elem_sz > 0)
     bits_poison_per_byte = (min_vect_elem_sz % 8) ? bits_byte :
                              bits_byte / gcd(bits_byte, min_vect_elem_sz);
-  if (has_byte_value)
+  if (has_byte_values)
     bits_poison_per_byte = bits_byte;
 
   strlen_unroll_cnt = 10;

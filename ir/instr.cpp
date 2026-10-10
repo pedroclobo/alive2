@@ -3990,14 +3990,16 @@ MemInstr::ByteAccessInfo MemInstr::ByteAccessInfo::anyType(unsigned bytesz) {
 MemInstr::ByteAccessInfo
 MemInstr::ByteAccessInfo::get(const Type &t, bool store, unsigned align) {
   bool ptr_access = hasPtr(t);
+  // bytes hold both integers and pointers
+  bool byte_access = hasByte(t);
   ByteAccessInfo info;
   info.doesIntLoad   = !ptr_access && !store;
   info.doesIntStore  = !ptr_access && store;
-  info.doesPtrLoad   = ptr_access && !store;
-  info.doesPtrStore  = ptr_access && store;
+  info.doesPtrLoad   = (ptr_access || byte_access) && !store;
+  info.doesPtrStore  = (ptr_access || byte_access) && store;
   info.byteSize      = gcd(align, getCommonAccessSize(t));
   info.subByteAccess = t.maxSubBitAccess();
-  info.observesAddresses = info.doesIntLoad;
+  info.observesAddresses = info.doesIntLoad && !byte_access;
   return info;
 }
 

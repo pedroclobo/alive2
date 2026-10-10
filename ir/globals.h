@@ -97,7 +97,9 @@ extern bool does_int_load;
 extern bool does_int_store;
 extern bool does_ptr_load;
 extern bool does_ptr_store;
-extern bool has_byte_ptr_roundtrip;
+
+/// Whether the programs have values of byte type
+extern bool has_byte_values;
 
 extern unsigned heap_block_alignment;
 
