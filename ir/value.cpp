@@ -55,9 +55,7 @@ void PoisonValue::print(ostream &os) const {
 }
 
 StateValue PoisonValue::toSMT(State &s) const {
-  if (hasByte(getType()))
-    return getType().mkUndef(s);
-  return getType().getDummyValue(false);
+  return getType().mkPoison(s);
 }
 
 

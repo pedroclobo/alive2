@@ -5311,14 +5311,6 @@ unique_ptr<Instr> ShuffleVector::dup(Function &f, const string &suffix) const {
 }
 
 
-// Byte values track poison per byte, so poison has to be encoded in the value
-// itself: their scalar non-poison flag is dropped when they are stored to
-// memory. ByteType::getDummyValue() cannot do it, as it has no Memory to build
-// poison bytes with.
-static StateValue makePoisonValue(State &s, const Type &type) {
-  return hasByte(type) ? type.mkUndef(s) : type.getDummyValue(false);
-}
-
 // A bit range of `access_bw` bits starting at `offset` can only be accessed in
 // a byte value of `byte_bw` bits if it is byte aligned and in range.
 // TODO: support sub-byte accesses
@@ -5363,14 +5355,14 @@ void BitExtract::print(ostream &os) const {
 }
 
 StateValue BitExtract::toSMT(State &s) const {
-  auto &sv = s[*src].value;
+  auto sv = foldBytePoison(s, src->getType(), s[*src]).value;
   auto &[ov, onp] = s[*offset];
   unsigned src_bw = src->getType().getAsByteType()->bw();
   unsigned bw = bitcast_width_const(getType());
 
   // TODO: support sub-byte accesses
   if (bw % 8 != 0)
-    return makePoisonValue(s, getType());
+    return getType().mkPoison(s);
 
   expr slice = sv.lshr(byteAccessShift(ov, sv.bits()))
                  .zextOrTrunc((bw / 8) * Byte::bitsByte());
@@ -5380,7 +5372,7 @@ StateValue BitExtract::toSMT(State &s) const {
                                             slice_ty, getType());
 
   expr ok = onp && byteAccessIsValid(ov, bw, src_bw);
-  return StateValue::mkIf(ok, ret, makePoisonValue(s, getType()));
+  return StateValue::mkIf(ok, ret, getType().mkPoison(s));
 }
 
 expr BitExtract::getTypeConstraints(const Function &f) const {
@@ -5419,14 +5411,14 @@ void BitInsert::print(ostream &os) const {
 }
 
 StateValue BitInsert::toSMT(State &s) const {
-  auto &bv = s[*base].value;
+  auto bv = foldBytePoison(s, base->getType(), s[*base]).value;
   auto &[ov, onp] = s[*offset];
   unsigned base_bw = base->getType().getAsByteType()->bw();
   unsigned bw = bitcast_width_const(val->getType());
 
   // TODO: support sub-byte accesses
   if (bw % 8 != 0)
-    return makePoisonValue(s, getType());
+    return getType().mkPoison(s);
 
   ByteType slice_ty("", bw);
   auto ins = s.getMemory().reinterpretValue(s[*val], val->getType(), slice_ty);
@@ -5439,7 +5431,7 @@ StateValue BitInsert::toSMT(State &s) const {
 
   expr ok = onp && byteAccessIsValid(ov, bw, base_bw);
   return StateValue::mkIf(ok, { std::move(value), std::move(ins.non_poison) },
-                          makePoisonValue(s, getType()));
+                          getType().mkPoison(s));
 }
 
 expr BitInsert::getTypeConstraints(const Function &f) const {

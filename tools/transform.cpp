@@ -462,13 +462,51 @@ static expr preprocess(const Transform &t, const set<expr> &qvars0,
 }
 
 
+// Byte values encode poison in their bytes, so a target byte may be undef in
+// the bits that are poison in the source byte.
 static expr
-encode_undef_refinement_per_elem(const Type &ty, const StateValue &sva,
+encode_undef_refinement_bytes(const State &src_state, const State &tgt_state,
+                              const ByteType &ty, const StateValue &sva,
+                              const expr &a2, const expr &b, const expr &b2) {
+  assert(bits_poison_per_byte == bits_byte);
+  auto &src_m = const_cast<State&>(src_state).returnMemory();
+  auto &tgt_m = const_cast<State&>(tgt_state).returnMemory();
+  expr result = false;
+
+  for (unsigned i = 0, e = ty.bits() / Byte::bitsByte(); i != e; ++i) {
+    unsigned lo = i * Byte::bitsByte();
+    unsigned hi = lo + Byte::bitsByte() - 1;
+    Byte src(src_m, sva.value.extract(hi, lo));
+    Byte tgt(tgt_m, b.extract(hi, lo));
+    Byte tgt2(tgt_m, b2.extract(hi, lo));
+
+    expr mask = src.nonPoison();
+    expr int_undef
+      = (((tgt.forceCastToInt() ^ tgt2.forceCastToInt()) |
+          (tgt.nonPoison() ^ tgt2.nonPoison())) & mask) !=
+        expr::mkUInt(0, mask);
+    expr tgt_undef = expr::mkIf(src.isPtr(),
+                                b.extract(hi, lo) != b2.extract(hi, lo),
+                                int_undef);
+
+    result |= mask != expr::mkUInt(0, mask) &&
+              sva.value.extract(hi, lo) == a2.extract(hi, lo) &&
+              tgt_undef;
+  }
+  return sva.non_poison && result;
+}
+
+static expr
+encode_undef_refinement_per_elem(const State &src_state, const State &tgt_state,
+                                 const Type &ty, const StateValue &sva,
                                  expr &&a2, expr &&b, expr &&b2) {
   const auto *aty = ty.getAsAggregateType();
   if (!aty) {
     if (config::disallow_ub_exploitation)
       return sva.non_poison && sva.value != a2;
+    if (auto bty = ty.getAsByteType())
+      return encode_undef_refinement_bytes(src_state, tgt_state, *bty, sva,
+                                           a2, b, b2);
     return sva.non_poison && sva.value == a2 && b != b2;
   }
 
@@ -478,7 +516,8 @@ encode_undef_refinement_per_elem(const Type &ty, const StateValue &sva,
 
   for (unsigned i = 0; i < aty->numElementsConst(); ++i) {
     if (!aty->isPadding(i))
-      result |= encode_undef_refinement_per_elem(aty->getChild(i),
+      result |= encode_undef_refinement_per_elem(src_state, tgt_state,
+                  aty->getChild(i),
                   aty->extract(sva, i), aty->extract(sva2, i).value,
                   aty->extract(svb, i).value, aty->extract(svb2, i).value);
   }
@@ -521,7 +560,8 @@ static expr encode_undef_refinement(const State &src_state,
     return val.val.value.subst(repls);
   };
 
-  return encode_undef_refinement_per_elem(type, a.val, subst(src_state, a),
+  return encode_undef_refinement_per_elem(src_state, tgt_state, type, a.val,
+                                          subst(src_state, a),
                                           expr(b.val.value),
                                           subst(tgt_state, b));
 }

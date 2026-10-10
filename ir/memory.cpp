@@ -681,7 +681,7 @@ static vector<Byte> valueToBytes(const StateValue &val, const Type &fromType,
     for (unsigned i = 0, e = vty->numElementsConst(); i < e; ++i)
       append_ptr_bytes(vty->extract(val, little_endian ? i : e - i - 1));
   } else if (fromType.isByteType() || isByteVector(fromType)) {
-    StateValue byval = fromType.toInt(s, val);
+    StateValue byval = fromType.toInt(s, foldBytePoison(s, fromType, val));
     unsigned bytesize = byval.bits() / Byte::bitsByte();
     assert(bytesize * Byte::bitsByte() == byval.bits());
 
@@ -836,10 +836,14 @@ static StateValue bytesToValue(const Memory &m, const vector<TypedByte> &bytes,
         expr_np &= b.byteNumber() == byte_number++;
       }
 
+      // Byte reinterpretation keeps poison per bit, so that each lane of a
+      // vector with sub-byte lanes is only poison if one of its bits is.
       auto np = is_byte_reinterpretation
-        ? expr::mkIf(b.isPoison() || !expr_np,
+        ? expr::mkIf(!expr_np || (b.isPtr() && !b.ptrNonpoison()),
                      expr::mkUInt(0, b.nonptrNonpoison()),
-                     expr::mkInt(-1, b.nonptrNonpoison()))
+                     expr::mkIf(b.isPtr(),
+                                expr::mkInt(-1, b.nonptrNonpoison()),
+                                b.nonptrNonpoison()))
         : ibyteTy.combine_poison(expr_np, b.nonptrNonpoison());
       if (is_asm) {
         np = expr::mkInt(-1, np);

@@ -126,6 +126,7 @@ public:
             const StateValue &tgt) const = 0;
 
   virtual StateValue mkUndef(State &s) const;
+  virtual StateValue mkPoison(State &s) const;
   virtual smt::expr
     mkInput(State &s, const char *name, const ParamAttrs &attrs) const = 0;
   virtual std::pair<smt::expr, smt::expr>
@@ -218,6 +219,7 @@ public:
     refines(State &src_s, State &tgt_s, const StateValue &src,
             const StateValue &tgt) const override;
   StateValue mkUndef(State &s) const override;
+  StateValue mkPoison(State &s) const override;
   smt::expr
     mkInput(State &s, const char *name, const ParamAttrs &attrs) const override;
   std::pair<smt::expr, smt::expr>
@@ -360,6 +362,7 @@ public:
     refines(State &src_s, State &tgt_s, const StateValue &src,
             const StateValue &tgt) const override;
   StateValue mkUndef(State &s) const override;
+  StateValue mkPoison(State &s) const override;
   smt::expr
     mkInput(State &s, const char *name, const ParamAttrs &attrs) const override;
   unsigned numPointerElements() const;
@@ -477,6 +480,7 @@ public:
     refines(State &src_s, State &tgt_s, const StateValue &src,
             const StateValue &tgt) const override;
   StateValue mkUndef(State &s) const override;
+  StateValue mkPoison(State &s) const override;
   smt::expr
     mkInput(State &s, const char *name, const ParamAttrs &attrs) const override;
   std::pair<smt::expr, smt::expr>
@@ -489,6 +493,7 @@ public:
 
 bool hasPtr(const Type &t);
 bool hasByte(const Type &t);
+StateValue foldBytePoison(State &s, const Type &ty, const StateValue &v);
 bool isNonPtrVector(const Type &t);
 bool isByteVector(const Type &t);
 unsigned minVectorElemSize(const Type &t);

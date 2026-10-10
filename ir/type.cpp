@@ -300,6 +300,10 @@ StateValue Type::mkUndef(State &s) const {
   return { std::move(var), std::move(val.non_poison) };
 }
 
+StateValue Type::mkPoison(State &s) const {
+  return getDummyValue(false);
+}
+
 pair<expr, expr> Type::mkUndefInput(State &s, const ParamAttrs &attrs) const {
   auto var = expr::mkFreshVar("undef", mkInput(s, "", attrs));
   return { var, var };
@@ -514,12 +518,26 @@ ByteType::refines(State &src_s, State &tgt_s, const StateValue &src,
            (src.non_poison && tgt.non_poison).implies(refined) };
 }
 
-StateValue ByteType::mkUndef(State &s) const {
+// Byte values encode poison in their bytes.
+StateValue ByteType::mkPoison(State &s) const {
   expr raw;
   assert(bw() % 8 == 0);
   for (unsigned i = 0, e = bw() / 8; i < e; ++i) {
     auto byte = Byte::mkPoisonByte(s.getMemory())();
-    raw = i == 0 ? std::move(byte) : raw.concat(byte);
+    raw = i == 0 ? std::move(byte) : byte.concat(raw);
+  }
+  return { std::move(raw), true };
+}
+
+// undef is per bit, and never holds pointer bits.
+StateValue ByteType::mkUndef(State &s) const {
+  expr raw;
+  assert(bw() % 8 == 0);
+  for (unsigned i = 0, e = bw() / 8; i < e; ++i) {
+    expr var = expr::mkFreshVar("undef", expr::mkUInt(0, bits_byte));
+    s.addUndefVar(expr(var));
+    auto byte = Byte(s.getMemory(), { std::move(var), true }, bw(), i)();
+    raw = i == 0 ? std::move(byte) : byte.concat(raw);
   }
   return { std::move(raw), true };
 }
@@ -1207,6 +1225,18 @@ AggregateType::refines(State &src_s, State &tgt_s, const StateValue &src,
   return { expr::mk_and(poison), expr::mk_and(value) };
 }
 
+StateValue AggregateType::mkPoison(State &s) const {
+  if (!hasByte(*this))
+    return getDummyValue(false);
+
+  vector<StateValue> vals;
+  for (unsigned i = 0; i < elements; ++i) {
+    if (!isPadding(i))
+      vals.emplace_back(children[i]->mkPoison(s));
+  }
+  return aggregateVals(vals);
+}
+
 StateValue AggregateType::mkUndef(State &s) const {
   vector<StateValue> vals;
   for (unsigned i = 0; i < elements; ++i) {
@@ -1688,6 +1718,10 @@ SymbolicType::refines(State &src_s, State &tgt_s, const StateValue &src,
   DISPATCH(refines(src_s, tgt_s, src, tgt), UNREACHABLE());
 }
 
+StateValue SymbolicType::mkPoison(State &st) const {
+  DISPATCH(mkPoison(st), UNREACHABLE());
+}
+
 StateValue SymbolicType::mkUndef(State &st) const {
   DISPATCH(mkUndef(st), UNREACHABLE());
 }
@@ -1735,6 +1769,27 @@ bool hasByte(const Type &t) {
     }
   }
   return false;
+}
+
+// Byte values encode poison in their bytes. Folds a scalar non-poison flag,
+// as set by generic instructions like select, into them.
+StateValue foldBytePoison(State &s, const Type &ty, const StateValue &v) {
+  if (!hasByte(ty))
+    return v;
+
+  if (auto agg = ty.getAsAggregateType()) {
+    vector<StateValue> vals;
+    for (unsigned i = 0, e = agg->numElementsConst(); i != e; ++i) {
+      if (!agg->isPadding(i))
+        vals.emplace_back(
+          foldBytePoison(s, agg->getChild(i), agg->extract(v, i)));
+    }
+    return agg->aggregateVals(vals);
+  }
+
+  if (v.non_poison.isTrue())
+    return v;
+  return { expr::mkIf(v.non_poison, v.value, ty.mkPoison(s).value), true };
 }
 
 bool isNonPtrVector(const Type &t) {
