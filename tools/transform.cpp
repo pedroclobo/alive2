@@ -1230,6 +1230,8 @@ static void calculateAndInitConstants(Transform &t) {
         if (hasByte(dst_ty) || hasByte(src_ty)) {
           does_ptr_store |= hasPtr(src_ty);
           does_ptr_load  |= hasPtr(dst_ty);
+          // bytes read as ints or ptrs behave like an int load or inttoptr
+          observes_addresses |= hasByte(src_ty) && !hasByte(dst_ty);
           has_byte_to_ptr_bitcast |= hasByte(src_ty) && hasPtr(dst_ty);
           has_ptr_to_byte_bitcast |= hasPtr(src_ty) && hasByte(dst_ty);
         }
@@ -1238,6 +1240,7 @@ static void calculateAndInitConstants(Transform &t) {
         auto &dst_ty = be->getType();
         min_access_size = gcd_opt(min_access_size, getCommonAccessSize(dst_ty));
         does_ptr_load |= hasPtr(dst_ty);
+        observes_addresses |= !hasByte(dst_ty);
         has_byte_to_ptr_bitcast |= hasPtr(dst_ty);
 
       } else if (auto *bi = dynamic_cast<const BitInsert*>(&i)) {

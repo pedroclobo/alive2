@@ -520,23 +520,24 @@ expr TypedByte::refined(const TypedByte &other) const {
                   ptrByteoffset() == other.ptrByteoffset() &&
                   ptr().refined(other.ptr()));
   } else {
-    auto other_int = other.nonptrValue();
+    auto other_int = other.forceCastToInt();
+    // physical pointers have wildcard provenance, so only the null block
+    // has no provenance
+    expr no_provenance = ptr().isLogical() && ptr().getBid() == 0;
     ptr_cnstr = ptrNonpoison().implies(
                   expr::mkIf(is_ptr2,
                     other.ptrNonpoison() &&
-                    ptrByteoffset() == other.ptrByteoffset() &&
-                    ptr().refined(other.ptr()),
+                    ((ptrByteoffset() == other.ptrByteoffset() &&
+                      ptr().refined(other.ptr())) ||
+                     // allow a ptr without provenance to be replaced with
+                     // any ptr byte holding the same integer value
+                     (no_provenance && castPtrToInt() == other_int)),
 
                     // allow a ptr without provenance to be replaced with an
                     // integer
                     other.boolNonptrNonpoison() &&
-                    (asm_mode ? castPtrToInt() == other_int
-                              : (ptr().isLogical()
-                                      .implies(ptr().getBid() == 0) &&
-                                  ptr().getAddress()
-                                      .zextOrTrunc(other_int.bits()) ==
-                                          other_int)
-                    )));
+                    (asm_mode ? expr(true) : no_provenance) &&
+                    castPtrToInt() == other_int));
   }
   return expr::mkIf(is_ptr, ptr_cnstr, int_cnstr);
 }
