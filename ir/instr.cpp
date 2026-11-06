@@ -1954,6 +1954,14 @@ static expr bitcast_width(const Type &type) {
   return total_width;
 }
 
+// Number of bits an element of this type occupies as seen by the IR, or the
+// number of bits of the type itself if it is not a vector.
+static expr scalar_bitcast_width(const Type &type) {
+  if (type.isVectorType())
+    return bitcast_width(type.getAsAggregateType()->getChild(0));
+  return bitcast_width(type);
+}
+
 // Number of bits a value of this type occupies as seen by the IR, which is not
 // the number of bits of its SMT encoding for byte and pointer types.
 static unsigned bitcast_width_const(const Type &type) {
@@ -5362,32 +5370,56 @@ void BitExtract::print(ostream &os) const {
 }
 
 StateValue BitExtract::toSMT(State &s) const {
-  auto sv = foldBytePoison(s, src->getType(), s[*src]).value;
-  auto &[ov, onp] = s[*offset];
-  unsigned src_bw = src->getType().getAsByteType()->bw();
-  unsigned bw = bitcast_width_const(getType());
+  auto scalar = [&](const StateValue &src, const StateValue &offset,
+                    const Type &src_ty, const Type &ty) -> StateValue {
+    auto sv = foldBytePoison(s, src_ty, src).value;
+    auto &[ov, onp] = offset;
+    unsigned src_bw = src_ty.getAsByteType()->bw();
+    unsigned bw = bitcast_width_const(ty);
 
-  // TODO: support sub-byte accesses
-  if (bw % 8 != 0)
-    return getType().mkPoison(s);
+    // TODO: support sub-byte accesses
+    if (bw % 8 != 0)
+      return ty.mkPoison(s);
 
-  expr slice = sv.lshr(byteAccessShift(ov, sv.bits()))
-                 .zextOrTrunc((bw / 8) * Byte::bitsByte());
+    expr slice = sv.lshr(byteAccessShift(ov, sv.bits()))
+                   .zextOrTrunc((bw / 8) * Byte::bitsByte());
 
-  ByteType slice_ty("", bw);
-  auto ret = s.getMemory().reinterpretValue({ std::move(slice), true },
-                                            slice_ty, getType());
+    ByteType slice_ty("", bw);
+    auto ret = s.getMemory().reinterpretValue({ std::move(slice), true },
+                                              slice_ty, ty);
 
-  expr ok = onp && byteAccessIsValid(ov, bw, src_bw);
-  return StateValue::mkIf(ok, ret, getType().mkPoison(s));
+    expr ok = onp && byteAccessIsValid(ov, bw, src_bw);
+    return StateValue::mkIf(ok, ret, ty.mkPoison(s));
+  };
+
+  auto &sv = s[*src];
+  auto &ov = s[*offset];
+
+  if (getType().isVectorType()) {
+    vector<StateValue> vals;
+    auto retty = getType().getAsAggregateType();
+    auto srcty = src->getType().getAsAggregateType();
+    auto offty = offset->getType().getAsAggregateType();
+
+    for (unsigned i = 0, e = retty->numElementsConst(); i != e; ++i) {
+      vals.emplace_back(scalar(srcty->extract(sv, i), offty->extract(ov, i),
+                               srcty->getChild(i), retty->getChild(i)));
+    }
+    return retty->aggregateVals(vals);
+  }
+
+  return scalar(sv, ov, src->getType(), getType());
 }
 
 expr BitExtract::getTypeConstraints(const Function &f) const {
   return Value::getTypeConstraints() &&
-         getType().enforceScalarType() &&
-         src->getType().enforceByteType() &&
-         bitcast_width(getType()).ule(bitcast_width(src->getType())) &&
-         offset->getType().enforceIntType(32);
+         getType().enforceIntOrByteOrFloatOrPtrOrVectorType() &&
+         src->getType().enforceByteOrVectorType() &&
+         offset->getType().enforceIntOrVectorType(32) &&
+         getType().enforceVectorTypeEquiv(src->getType()) &&
+         getType().enforceVectorTypeEquiv(offset->getType()) &&
+         scalar_bitcast_width(getType())
+           .ule(scalar_bitcast_width(src->getType()));
 }
 
 unique_ptr<Instr> BitExtract::dup(Function &f, const string &suffix) const {
@@ -5418,36 +5450,64 @@ void BitInsert::print(ostream &os) const {
 }
 
 StateValue BitInsert::toSMT(State &s) const {
-  auto bv = foldBytePoison(s, base->getType(), s[*base]).value;
-  auto &[ov, onp] = s[*offset];
-  unsigned base_bw = base->getType().getAsByteType()->bw();
-  unsigned bw = bitcast_width_const(val->getType());
+  auto scalar = [&](const StateValue &base, const StateValue &val,
+                    const StateValue &offset, const Type &base_ty,
+                    const Type &val_ty) -> StateValue {
+    auto bv = foldBytePoison(s, base_ty, base).value;
+    auto &[ov, onp] = offset;
+    unsigned base_bw = base_ty.getAsByteType()->bw();
+    unsigned bw = bitcast_width_const(val_ty);
 
-  // TODO: support sub-byte accesses
-  if (bw % 8 != 0)
-    return getType().mkPoison(s);
+    // TODO: support sub-byte accesses
+    if (bw % 8 != 0)
+      return base_ty.mkPoison(s);
 
-  ByteType slice_ty("", bw);
-  auto ins = s.getMemory().reinterpretValue(s[*val], val->getType(), slice_ty);
+    ByteType slice_ty("", bw);
+    auto ins = s.getMemory().reinterpretValue(val, val_ty, slice_ty);
 
-  unsigned raw_bits = bv.bits();
-  expr shift = byteAccessShift(ov, raw_bits);
-  expr mask  = expr::mkInt(-1, (bw / 8) * Byte::bitsByte())
-                 .zextOrTrunc(raw_bits) << shift;
-  expr value = (bv & ~mask) | (ins.value.zextOrTrunc(raw_bits) << shift);
+    unsigned raw_bits = bv.bits();
+    expr shift = byteAccessShift(ov, raw_bits);
+    expr mask  = expr::mkInt(-1, (bw / 8) * Byte::bitsByte())
+                   .zextOrTrunc(raw_bits) << shift;
+    expr value = (bv & ~mask) | (ins.value.zextOrTrunc(raw_bits) << shift);
 
-  expr ok = onp && byteAccessIsValid(ov, bw, base_bw);
-  return StateValue::mkIf(ok, { std::move(value), std::move(ins.non_poison) },
-                          getType().mkPoison(s));
+    expr ok = onp && byteAccessIsValid(ov, bw, base_bw);
+    return StateValue::mkIf(ok,
+                            { std::move(value), std::move(ins.non_poison) },
+                            base_ty.mkPoison(s));
+  };
+
+  auto &bv = s[*base];
+  auto &vv = s[*val];
+  auto &ov = s[*offset];
+
+  if (getType().isVectorType()) {
+    vector<StateValue> vals;
+    auto basety = getType().getAsAggregateType();
+    auto valty = val->getType().getAsAggregateType();
+    auto offty = offset->getType().getAsAggregateType();
+
+    for (unsigned i = 0, e = basety->numElementsConst(); i != e; ++i) {
+      vals.emplace_back(scalar(basety->extract(bv, i), valty->extract(vv, i),
+                               offty->extract(ov, i), basety->getChild(i),
+                               valty->getChild(i)));
+    }
+    return basety->aggregateVals(vals);
+  }
+
+  return scalar(bv, vv, ov, base->getType(), val->getType());
 }
 
 expr BitInsert::getTypeConstraints(const Function &f) const {
   return Value::getTypeConstraints() &&
          getType() == base->getType() &&
-         base->getType().enforceByteType() &&
-         val->getType().enforceScalarType() &&
-         bitcast_width(val->getType()).ule(bitcast_width(base->getType())) &&
-         offset->getType().enforceIntType(32);
+         base->getType().enforceByteOrVectorType() &&
+         val->getType().enforceIntOrByteOrFloatOrPtrOrVectorType() &&
+         offset->getType().enforceIntOrVectorType(32) &&
+         base->getType().enforceVectorTypeEquiv(val->getType()) &&
+         base->getType().enforceVectorTypeEquiv(offset->getType()) &&
+         scalar_bitcast_width(val->getType())
+           .ule(scalar_bitcast_width(base->getType()));
 }
 
 unique_ptr<Instr> BitInsert::dup(Function &f, const string &suffix) const {

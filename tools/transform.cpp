@@ -1273,13 +1273,19 @@ static void calculateAndInitConstants(Transform &t) {
 
       } else if (auto *be = dynamic_cast<const BitExtract*>(&i)) {
         auto &dst_ty = be->getType();
-        min_access_size = gcd_opt(min_access_size, getCommonAccessSize(dst_ty));
+        // A vector bitextract accesses each element on its own.
+        auto &elem_ty = dst_ty.isVectorType()
+                          ? dst_ty.getAsAggregateType()->getChild(0) : dst_ty;
+        min_access_size = gcd_opt(min_access_size, getCommonAccessSize(elem_ty));
         does_ptr_load |= hasPtr(dst_ty);
         observes_addresses |= !hasByte(dst_ty);
 
       } else if (auto *bi = dynamic_cast<const BitInsert*>(&i)) {
         auto &src_ty = bi->getValue().getType();
-        min_access_size = gcd_opt(min_access_size, getCommonAccessSize(src_ty));
+        // A vector bitinsert accesses each element on its own.
+        auto &elem_ty = src_ty.isVectorType()
+                          ? src_ty.getAsAggregateType()->getChild(0) : src_ty;
+        min_access_size = gcd_opt(min_access_size, getCommonAccessSize(elem_ty));
         does_ptr_store |= hasPtr(src_ty);
 
       } else if (auto *ic = dynamic_cast<const ICmp*>(&i)) {
